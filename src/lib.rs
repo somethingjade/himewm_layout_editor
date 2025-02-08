@@ -128,6 +128,8 @@ impl EditorWidgets {
     }
 
     fn display_group_from_variant_state(
+        variant_width: f64,
+        variant_height: f64,
         variant: &Variant,
         idx: usize,
         sender: &app::Sender<Message>,
@@ -143,10 +145,6 @@ impl EditorWidgets {
         let y_offset = group.y();
 
         let zones = &variant.get_zones()[idx];
-
-        let variant_width = variant.get_monitor_rect().right as f64;
-
-        let variant_height = variant.get_monitor_rect().bottom as f64;
 
         for (i, zone) in zones.iter().enumerate() {
             let mut b = button::Button::new(
@@ -320,17 +318,17 @@ impl EditorWidgets {
         group.set_size(group.w() / 2, group.h() / 2);
 
         for variant in layout.get_variants() {
-            let mut layout = group::Group::default_fill();
+            let mut display = group::Group::default_fill();
 
             for i in 0..variant.manual_zones_until() {
-                let mut g = Self::display_group_from_variant_state(variant, i, sender);
+                let mut g = Self::display_group_from_variant_state(layout.get_monitor_rect().w() as f64, layout.get_monitor_rect().h() as f64, variant, i, sender);
 
                 g.hide();
             }
 
-            layout.end();
+            display.end();
 
-            layout.hide();
+            display.hide();
         }
 
         group.end();
@@ -499,6 +497,8 @@ impl EditorWidgets {
         variant_state_display_group.begin();
 
         let _g = Self::display_group_from_variant_state(
+                            self.editor.layout.get_monitor_rect().w() as f64,
+                            self.editor.layout.get_monitor_rect().h() as f64,
             &self.editor.layout.get_variants()[variant_idx],
             variant_state_pack.children() as usize - 1,
             sender,
@@ -794,10 +794,14 @@ impl LayoutEditorGUI {
                 }
 
                 Message::NewVariantState => {
+                    let w = editor_widgets.editor.layout.get_monitor_rect().w();
+
+                    let h = editor_widgets.editor.layout.get_monitor_rect().h();
+
                     let variant = &mut editor_widgets.editor.layout.get_variants_mut()
                         [editor_widgets.editor.selected_variant_idx];
 
-                    variant.new_zone_vec();
+                    variant.new_zone_vec(w, h);
 
                     editor_widgets.new_variant_state(&self.sender);
                 }

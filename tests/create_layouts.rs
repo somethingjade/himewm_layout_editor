@@ -10,7 +10,7 @@ fn create_vertical_stack() {
 
     let mut current_variant = &mut layout_group.get_variants_mut()[idx];
 
-    current_variant.new_zone_vec();
+    current_variant.new_zone_vec(1920, 1200);
 
     for n in 1..=5 {
         current_variant.split(
@@ -54,7 +54,7 @@ fn create_spiral() {
     current_variant.add_repeating_split(Direction::Vertical, 0.5, 2, true);
     current_variant.add_repeating_split(Direction::Horizontal, 0.5, 3, false);
 
-    current_variant.new_zone_vec();
+    current_variant.new_zone_vec(1920, 1200);
 
     for n in 1..=5 {
         current_variant.split(
@@ -95,7 +95,7 @@ fn create_horizontal_stack_starting_at_3() {
 
     current_variant.set_end_tiling_direction(Direction::Horizontal);
 
-    current_variant.new_zone_vec();
+    current_variant.new_zone_vec(1920, 1200);
 
     for n in 1..=5 {
         match n {
@@ -144,7 +144,7 @@ fn create_horizontal_stack_starting_at_3() {
 
         variant.split(2, 1, SplitDirection::Vertical(600));
 
-        variant.new_zone_vec();
+        variant.new_zone_vec(1920, 1200);
 
         variant.split(3, 0, SplitDirection::Vertical(600));
     }
