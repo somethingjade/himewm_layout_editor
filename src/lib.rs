@@ -776,21 +776,72 @@ impl LayoutEditorGUI {
                     let selected_variant_state_idx =
                         editor_widgets.editor.selected_variant_state_idx;
 
-                    if let Some(old_idx) = editor_widgets.editor.selected_zone_idx1 {
-                        editor_widgets.dehighlight_zone(
-                            selected_variant_idx,
-                            selected_variant_state_idx,
-                            old_idx,
-                        );
-
-                        if old_idx == idx {
+                    if app::is_event_shift() {
+                        if 
+                            editor_widgets.editor.selected_zone_idx1 == None ||
+                            editor_widgets.editor.selected_zone_idx1 == Some(idx)
+                        {
                             return;
                         }
+
+                        if let Some(old_idx) = editor_widgets.editor.selected_zone_idx2 {
+                            editor_widgets.dehighlight_zone(
+                                selected_variant_idx,
+                                selected_variant_state_idx,
+                                old_idx,
+                            );
+
+                            if old_idx == idx {
+                                editor_widgets.editor.selected_zone_idx2 = None;
+
+                                return;
+                            }
+                        }
+
+                        editor_widgets.editor.selected_zone_idx2 = Some(idx);
+
+                        editor_widgets.highlight_selected_zone(idx);
                     }
+                    else {
+                        let mut new_selection = true;
 
-                    editor_widgets.editor.selected_zone_idx1 = Some(idx);
+                        if let Some(old_idx) = editor_widgets.editor.selected_zone_idx1 {
+                            editor_widgets.dehighlight_zone(
+                                selected_variant_idx,
+                                selected_variant_state_idx,
+                                old_idx,
+                            );
 
-                    editor_widgets.highlight_selected_zone(idx);
+                            if old_idx == idx {
+                                editor_widgets.editor.selected_zone_idx1 = None;
+
+                                new_selection = false;
+                            }
+                        }
+
+                        if let Some(old_idx) = editor_widgets.editor.selected_zone_idx2 {
+                            editor_widgets.editor.selected_zone_idx2 = None;
+
+                            if old_idx == idx {
+
+                                editor_widgets.editor.selected_zone_idx1 = Some(idx);
+
+                                return;
+                            }
+
+                            editor_widgets.dehighlight_zone(
+                                selected_variant_idx,
+                                selected_variant_state_idx,
+                                old_idx,
+                            );
+                        }
+
+                        if new_selection {
+                            editor_widgets.editor.selected_zone_idx1 = Some(idx);
+
+                            editor_widgets.highlight_selected_zone(idx);
+                        }
+                    }
                 }
 
                 Message::NewVariantState => {
