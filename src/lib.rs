@@ -20,6 +20,9 @@ enum Message {
     DuplicateVariantState,
     DeleteVariantState,
     SwapVariantState(SwapDirection),
+    Split(SplitDirection),
+    Swap,
+    Merge
 }
 
 struct LayoutEditor {
@@ -44,12 +47,73 @@ impl LayoutEditor {
     }
 }
 
+pub struct Actions {
+    pub widgets: group::Flex,
+    selected_direction: Direction,
+    split_button: button::Button,
+    split_axis_text: frame::Frame,
+    split_at_input: input::IntInput,
+    split_bounds_text: frame::Frame,
+}
+
+impl Actions {
+    fn initialize() -> Self {
+        let selected_direction = Direction::Horizontal;
+
+        let mut widgets = group::Flex::default_fill().with_type(FlexType::Column);
+
+        let w = widgets.w()/8;
+
+        let h = widgets.h()/4;
+
+        WidgetExt::set_size(&mut widgets, w, h);
+        
+        let mut horizontal_radio_button = button::RadioRoundButton::default().with_label("Horizontal");
+        
+        let _vertical_radio_button = button::RadioRoundButton::default().with_label("Vertical");
+
+        horizontal_radio_button.toggle(true);
+        
+        let mut split_at_selection = group::Flex::default_fill().with_type(FlexType::Row);
+
+        WidgetExt::set_size(&mut split_at_selection, w, 32);
+        
+        let split_axis_text = frame::Frame::default().with_align(enums::Align::Left.union(enums::Align::Inside)).with_label("y: ");
+
+        split_at_selection.fixed(&split_axis_text, 16);
+
+        let split_at_input = input::IntInput::default();
+
+        split_at_selection.end();
+        
+        let split_bounds_text = frame::Frame::default();
+
+        let split_button_spacer = frame::Frame::default();
+        
+        widgets.fixed(&split_button_spacer, 4);
+
+        let split_button = button::Button::default().with_label("Split");
+
+        widgets.end();
+
+        return Actions {
+            selected_direction,
+            split_button,
+            split_axis_text,
+            split_at_input,
+            split_bounds_text,
+            widgets,
+        };
+    }
+}
+
 struct EditorWidgets {
     editor: LayoutEditor,
     variant_list: group::Scroll,
     variant_state_selection: group::Scroll,
     variant_state_pack: group::Pack,
     variant_state_display: group::Group,
+    actions: Actions
 }
 
 impl EditorWidgets {
@@ -82,9 +146,12 @@ impl EditorWidgets {
 
         let variant_state_display = Self::create_variant_state_display(&layout, sender);
 
+        let actions = Actions::initialize();
+
         let editor = LayoutEditor::new(layout);
 
         let mut ret = EditorWidgets {
+            actions,
             editor,
             variant_list,
             variant_state_selection,
@@ -706,7 +773,11 @@ impl LayoutEditorGUI {
                 self.window.w() / 2 - editor.variant_state_display.w() / 2,
                 self.window.h() / 2 - editor.variant_state_display.h() / 2,
             );
+
+            editor.actions.widgets.set_pos(self.window.w() - editor.actions.widgets.w() - 4, 0);
         }
+
+        
     }
 
     fn handle_events(&mut self) {
@@ -903,6 +974,14 @@ impl LayoutEditorGUI {
 
                     editor_widgets.swap_variant_states(swap_with, &self.sender);
                 }
+
+                Message::Split(direction) => {
+
+                }
+
+                Message::Swap => {}
+
+                Message::Merge => {}
             }
         }
     }
