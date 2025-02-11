@@ -8,7 +8,7 @@ fn show_layout() {
 
     let variant = &mut layout_group.get_variants_mut()[idx];
 
-    variant.new_zone_vec(1920, 1200); 
+    variant.new_zone_vec(1920, 1200);
 
     variant.split(1, 0, SplitDirection::Horizontal(960));
 
