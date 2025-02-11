@@ -1,5 +1,5 @@
-use enums::{Color, FrameType};
-use fltk::{group::FlexType, *};
+use enums::{Align, Color, FrameType};
+use fltk::{group::FlexType, prelude::InputExt, *};
 use fltk_theme::*;
 use group::{PackType, ScrollType};
 use himewm_layout::*;
@@ -20,9 +20,10 @@ enum Message {
     DuplicateVariantState,
     DeleteVariantState,
     SwapVariantState(SwapDirection),
-    Split(SplitDirection),
+    SwapSplitDirection,
+    Split,
     Swap,
-    Merge
+    Merge,
 }
 
 struct LayoutEditor {
@@ -49,6 +50,7 @@ impl LayoutEditor {
 
 pub struct Actions {
     pub widgets: group::Flex,
+    pub split_bound_max: Option<i32>,
     selected_direction: Direction,
     split_button: button::Button,
     split_axis_text: frame::Frame,
@@ -57,7 +59,7 @@ pub struct Actions {
 }
 
 impl Actions {
-    fn initialize() -> Self {
+    fn initialize(sender: &app::Sender<Message>) -> Self {
         let selected_direction = Direction::Horizontal;
 
         let mut widgets = group::Flex::default_fill().with_type(FlexType::Column);
@@ -70,15 +72,19 @@ impl Actions {
         
         let mut horizontal_radio_button = button::RadioRoundButton::default().with_label("Horizontal");
         
-        let _vertical_radio_button = button::RadioRoundButton::default().with_label("Vertical");
+        let mut vertical_radio_button = button::RadioRoundButton::default().with_label("Vertical");
 
         horizontal_radio_button.toggle(true);
+
+        horizontal_radio_button.emit(sender.clone(), Message::SwapSplitDirection);
+
+        vertical_radio_button.emit(sender.clone(), Message::SwapSplitDirection);
         
         let mut split_at_selection = group::Flex::default_fill().with_type(FlexType::Row);
 
         WidgetExt::set_size(&mut split_at_selection, w, 32);
         
-        let split_axis_text = frame::Frame::default().with_align(enums::Align::Left.union(enums::Align::Inside)).with_label("y: ");
+        let split_axis_text = frame::Frame::default().with_align(Align::Left.union(Align::Inside)).with_label("y: ");
 
         split_at_selection.fixed(&split_axis_text, 16);
 
@@ -92,12 +98,17 @@ impl Actions {
         
         widgets.fixed(&split_button_spacer, 4);
 
-        let split_button = button::Button::default().with_label("Split");
+        let mut split_button = button::Button::default().with_label("Split");
+
+        split_button.emit(sender.clone(), Message::Split);
+
+        split_button.deactivate();
 
         widgets.end();
 
         return Actions {
             selected_direction,
+            split_bound_max: None,
             split_button,
             split_axis_text,
             split_at_input,
@@ -146,7 +157,7 @@ impl EditorWidgets {
 
         let variant_state_display = Self::create_variant_state_display(&layout, sender);
 
-        let actions = Actions::initialize();
+        let actions = Actions::initialize(sender);
 
         let editor = LayoutEditor::new(layout);
 
@@ -525,6 +536,27 @@ impl EditorWidgets {
         }
     }
 
+    fn reset_zone_selection(&mut self) {
+        self.disable_split();
+
+        let variant_idx = self.editor.selected_variant_idx;
+
+        let variant_state_idx = self.editor.selected_variant_state_idx;
+
+        if let Some(zone_idx) = self.editor.selected_zone_idx1 {
+            self.dehighlight_zone(variant_idx, variant_state_idx, zone_idx);
+
+            self.editor.selected_zone_idx1 = None;
+
+
+            if let Some(zone_idx) = self.editor.selected_zone_idx2 {
+                self.dehighlight_zone(variant_idx, variant_state_idx, zone_idx);
+
+                self.editor.selected_zone_idx2 = None;
+            }
+        }
+    }
+
     fn new_variant_state(&mut self, sender: &app::Sender<Message>) {
         let variant_idx = self.editor.selected_variant_idx;
 
@@ -698,6 +730,52 @@ impl EditorWidgets {
         sender.send(Message::SelectedVariantStateChanged(swap_with));
     }
 
+    fn update_split_bounds(&mut self) {
+        let variant_state = &self.editor.layout.get_variants()[self.editor.selected_variant_idx].get_zones()[self.editor.selected_variant_state_idx];
+
+        let selected_zone1 = &variant_state[self.editor.selected_zone_idx1.unwrap()];
+
+        let max = match self.actions.selected_direction {
+            Direction::Horizontal => {
+                if let Some(idx) = self.editor.selected_zone_idx2 {
+                    let selected_zone2 = &variant_state[idx];
+
+                    std::cmp::max(selected_zone1.right, selected_zone2.right) - std::cmp::min(selected_zone1.left, selected_zone2.left)
+                }
+
+                else {
+                    selected_zone1.w()
+                }
+            },
+            Direction::Vertical => {
+                if let Some(idx) = self.editor.selected_zone_idx2 {
+                    let selected_zone2 = &variant_state[idx];
+
+                    std::cmp::max(selected_zone1.bottom, selected_zone2.bottom) - std::cmp::min(selected_zone1.top, selected_zone2.top)
+                }
+
+                else {
+                    selected_zone1.h()
+                }
+
+            }
+        };
+
+        self.actions.split_bound_max = Some(max);
+
+        self.actions.split_bounds_text.set_label(format!("0 - {max}").as_str());
+    }
+
+    fn disable_split(&mut self) {
+        self.actions.split_bound_max = None;
+
+        self.actions.split_button.set_label("Split");
+
+        self.actions.split_button.deactivate();
+
+        self.actions.split_bounds_text.set_label("");
+    }
+
     fn decrement_all_variant_state_buttons_after(
         &mut self,
         variant_idx: usize,
@@ -790,6 +868,8 @@ impl LayoutEditorGUI {
         if let Some(msg) = self.receiver.recv() {
             match msg {
                 Message::SelectedVariantChanged(idx) => {
+                    editor_widgets.reset_zone_selection();
+
                     let old_variant_idx = editor_widgets.editor.selected_variant_idx;
 
                     let old_variant_state_idx = editor_widgets.editor.selected_variant_state_idx;
@@ -814,6 +894,8 @@ impl LayoutEditorGUI {
                 }
 
                 Message::SelectedVariantStateChanged(idx) => {
+                    editor_widgets.reset_zone_selection();
+
                     let variant_idx = editor_widgets.editor.selected_variant_idx;
 
                     let old_idx = editor_widgets.editor.selected_variant_state_idx;
@@ -827,18 +909,6 @@ impl LayoutEditorGUI {
 
                     editor_widgets
                         .update_shown_variant_state((variant_idx, old_idx), (variant_idx, idx));
-
-                    if let Some(zone_idx) = editor_widgets.editor.selected_zone_idx1 {
-                        editor_widgets.dehighlight_zone(variant_idx, old_idx, zone_idx);
-
-                        editor_widgets.editor.selected_zone_idx1 = None;
-                    }
-
-                    if let Some(zone_idx) = editor_widgets.editor.selected_zone_idx2 {
-                        editor_widgets.dehighlight_zone(variant_idx, old_idx, zone_idx);
-
-                        editor_widgets.editor.selected_zone_idx2 = None;
-                    }
                 }
 
                 Message::SelectedZoneChanged(idx) => {
@@ -865,6 +935,12 @@ impl LayoutEditorGUI {
                             if old_idx == idx {
                                 editor_widgets.editor.selected_zone_idx2 = None;
 
+                                editor_widgets.actions.split_button.set_label("Split");
+
+                                editor_widgets.actions.split_button.activate();
+
+                                editor_widgets.update_split_bounds();
+
                                 return;
                             }
                         }
@@ -872,8 +948,24 @@ impl LayoutEditorGUI {
                         editor_widgets.editor.selected_zone_idx2 = Some(idx);
 
                         editor_widgets.highlight_selected_zone(idx);
+
+                        let variant = &editor_widgets.editor.layout.get_variants()[selected_variant_idx];
+
+                        if variant.can_merge_zones(selected_variant_state_idx, editor_widgets.editor.selected_zone_idx1.unwrap(),idx) {
+                            editor_widgets.actions.split_button.set_label("Merge and split");
+
+                            editor_widgets.actions.split_button.activate();
+
+                            editor_widgets.update_split_bounds();
+
+                        }
+                        else {
+                            editor_widgets.disable_split();
+                        }
                     }
                     else {
+                        editor_widgets.actions.split_button.set_label("Split");
+
                         let mut new_selection = true;
 
                         if let Some(old_idx) = editor_widgets.editor.selected_zone_idx1 {
@@ -897,6 +989,8 @@ impl LayoutEditorGUI {
 
                                 editor_widgets.editor.selected_zone_idx1 = Some(idx);
 
+                                editor_widgets.update_split_bounds();
+
                                 return;
                             }
 
@@ -911,6 +1005,14 @@ impl LayoutEditorGUI {
                             editor_widgets.editor.selected_zone_idx1 = Some(idx);
 
                             editor_widgets.highlight_selected_zone(idx);
+                            
+                            editor_widgets.actions.split_button.activate();
+
+                            editor_widgets.update_split_bounds();
+                        }
+
+                        else {
+                            editor_widgets.disable_split();
                         }
                     }
                 }
@@ -975,7 +1077,87 @@ impl LayoutEditorGUI {
                     editor_widgets.swap_variant_states(swap_with, &self.sender);
                 }
 
-                Message::Split(direction) => {
+                Message::SwapSplitDirection => {
+                    editor_widgets.actions.selected_direction = editor_widgets.actions.selected_direction.other();
+
+                    editor_widgets.update_split_bounds();
+
+                }
+
+                Message::Split => {
+                    let split_at: i32 = match editor_widgets.actions.split_at_input.value().parse() {
+                        Ok(val) => val,
+                        Err(_) => return,
+                    };
+                    
+                    editor_widgets.actions.split_at_input.set_value("");
+
+                    if
+                        split_at <= 0 ||
+                        split_at >= editor_widgets.actions.split_bound_max.unwrap()
+                    {
+                        return;
+                    }
+
+                    let mut zone_idx = editor_widgets.editor.selected_zone_idx1.unwrap();
+
+                    
+                    let w = editor_widgets.editor.layout.get_monitor_rect().w() as f64;
+
+                    let h = editor_widgets.editor.layout.get_monitor_rect().h() as f64;
+
+                    let selected_variant_idx = editor_widgets.editor.selected_variant_idx;
+
+                    let selected_variant_state_idx = editor_widgets.editor.selected_variant_state_idx;
+
+                    let variant = &mut editor_widgets.editor.layout.get_variants_mut()[selected_variant_idx];
+
+
+                    let other_zone_idx = if let Some(idx) = editor_widgets.editor.selected_zone_idx2 {
+                        variant.merge_zones(selected_variant_state_idx, zone_idx, idx);
+                        
+                        zone_idx = std::cmp::min(zone_idx, idx);
+
+                        Some(std::cmp::max(zone_idx, idx))
+                    }
+                    else {
+                        None
+                    };
+
+                    let zone = &variant.get_zones()[selected_variant_state_idx][zone_idx];
+
+                    let direction = match editor_widgets.actions.selected_direction {
+                        Direction::Horizontal => {
+                            SplitDirection::Horizontal(zone.left + split_at)
+                        }
+                        Direction::Vertical => {
+                            SplitDirection::Vertical(zone.top + split_at)
+                        }
+                    };
+
+                    variant.split(selected_variant_state_idx, zone_idx, direction);
+
+                    if let Some(idx) = other_zone_idx {
+                        let zone = variant.get_zones_mut()[selected_variant_state_idx].pop().unwrap();
+                        
+                        variant.get_zones_mut()[selected_variant_state_idx].insert(idx, zone);
+                    }
+
+                    let variant_display_group = &mut group::Group::from_dyn_widget(&editor_widgets.variant_state_display.child(selected_variant_idx as i32).unwrap()).unwrap();
+
+                    variant_display_group.begin();
+
+                    let new_display = EditorWidgets::display_group_from_variant_state(w, h, variant, selected_variant_state_idx, &self.sender);
+
+                    variant_display_group.end();
+
+                    variant_display_group.remove(&new_display);
+
+                    WidgetBase::delete(variant_display_group.child(selected_variant_state_idx as i32).unwrap());
+
+                    variant_display_group.insert(&new_display, selected_variant_state_idx as i32);
+
+                    editor_widgets.reset_zone_selection();
 
                 }
 
