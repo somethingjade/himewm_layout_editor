@@ -108,9 +108,9 @@ impl Actions {
         split_button.emit(sender.clone(), Message::Split);
 
         split_button.deactivate();
-        
+
         split_actions_column.fixed(&split_button, 32);
-        
+
         split_actions_column.end();
 
         let columns_spacer = frame::Frame::default();
@@ -139,7 +139,6 @@ impl Actions {
 
         widgets.end();
 
-
         return Actions {
             selected_direction,
             split_bound_max: None,
@@ -149,7 +148,7 @@ impl Actions {
             split_bounds_text,
             widgets,
             merge_button,
-            swap_button
+            swap_button,
         };
     }
 }
@@ -817,7 +816,12 @@ impl EditorWidgets {
         self.actions.split_bounds_text.set_label("");
     }
 
-    fn update_variant_state_display(&mut self, variant_idx: usize, variant_state_idx: usize, sender: &app::Sender<Message>) {
+    fn update_variant_state_display(
+        &mut self,
+        variant_idx: usize,
+        variant_state_idx: usize,
+        sender: &app::Sender<Message>,
+    ) {
         let w = self.editor.layout.get_monitor_rect().w() as f64;
 
         let h = self.editor.layout.get_monitor_rect().h() as f64;
@@ -855,7 +859,6 @@ impl EditorWidgets {
         variant_display_group.insert(&new_display, variant_state_idx as i32);
 
         self.reset_zone_selection();
-
     }
 
     fn decrement_all_variant_state_buttons_after(
@@ -1057,7 +1060,7 @@ impl LayoutEditorGUI {
                             editor_widgets.actions.merge_button.activate();
                         } else {
                             editor_widgets.disable_split();
-                            
+
                             editor_widgets.actions.merge_button.deactivate();
                         }
                     } else {
@@ -1182,11 +1185,9 @@ impl LayoutEditorGUI {
                     match editor_widgets.actions.selected_direction {
                         Direction::Horizontal => {
                             editor_widgets.actions.split_axis_text.set_label("x: ");
-
                         }
                         Direction::Vertical => {
                             editor_widgets.actions.split_axis_text.set_label("y: ");
-
                         }
                     }
 
@@ -1198,7 +1199,11 @@ impl LayoutEditorGUI {
                 Message::Split => {
                     let split_at: i32 = match editor_widgets.actions.split_at_input.value().parse()
                     {
-                        Ok(val) if val > 0 && val < editor_widgets.actions.split_bound_max.unwrap() => val,
+                        Ok(val)
+                            if val > 0 && val < editor_widgets.actions.split_bound_max.unwrap() =>
+                        {
+                            val
+                        }
                         _ => {
                             editor_widgets.reset_zone_selection();
 
@@ -1246,46 +1251,67 @@ impl LayoutEditorGUI {
                         variant.get_zones_mut()[selected_variant_state_idx].insert(idx, zone);
                     }
 
-                    editor_widgets.update_variant_state_display(selected_variant_idx, selected_variant_state_idx, &self.sender);
+                    editor_widgets.update_variant_state_display(
+                        selected_variant_idx,
+                        selected_variant_state_idx,
+                        &self.sender,
+                    );
                 }
 
                 Message::Swap => {
                     let selected_variant_idx = editor_widgets.editor.selected_variant_idx;
 
-                    let selected_variant_state_idx = editor_widgets.editor.selected_variant_state_idx;
+                    let selected_variant_state_idx =
+                        editor_widgets.editor.selected_variant_state_idx;
 
                     let selected_zone_idx1 = editor_widgets.editor.selected_zone_idx1.unwrap();
 
                     let selected_zone_idx2 = editor_widgets.editor.selected_zone_idx2.unwrap();
-                    
+
                     let variant =
                         &mut editor_widgets.editor.layout.get_variants_mut()[selected_variant_idx];
-                    
-                    variant.swap_zones(selected_variant_state_idx, selected_zone_idx1, selected_zone_idx2);
 
-                    editor_widgets.update_variant_state_display(selected_variant_idx, selected_variant_state_idx, &self.sender);
+                    variant.swap_zones(
+                        selected_variant_state_idx,
+                        selected_zone_idx1,
+                        selected_zone_idx2,
+                    );
+
+                    editor_widgets.update_variant_state_display(
+                        selected_variant_idx,
+                        selected_variant_state_idx,
+                        &self.sender,
+                    );
                 }
 
                 Message::Merge => {
                     let selected_variant_idx = editor_widgets.editor.selected_variant_idx;
 
-                    let selected_variant_state_idx = editor_widgets.editor.selected_variant_state_idx;
+                    let selected_variant_state_idx =
+                        editor_widgets.editor.selected_variant_state_idx;
 
                     let selected_zone_idx1 = editor_widgets.editor.selected_zone_idx1.unwrap();
 
                     let selected_zone_idx2 = editor_widgets.editor.selected_zone_idx2.unwrap();
-                    
+
                     let variant =
                         &mut editor_widgets.editor.layout.get_variants_mut()[selected_variant_idx];
-                    
-                    variant.merge_zones(selected_variant_state_idx, selected_zone_idx1, selected_zone_idx2);
-                    
+
+                    variant.merge_zones(
+                        selected_variant_state_idx,
+                        selected_zone_idx1,
+                        selected_zone_idx2,
+                    );
+
                     editor_widgets.editor.selected_zone_idx1 = None;
 
                     editor_widgets.editor.selected_zone_idx2 = None;
 
-                    editor_widgets.update_variant_state_display(selected_variant_idx, selected_variant_state_idx, &self.sender);
-
+                    editor_widgets.update_variant_state_display(
+                        selected_variant_idx,
+                        selected_variant_state_idx,
+                        &self.sender,
+                    );
                 }
             }
         }
