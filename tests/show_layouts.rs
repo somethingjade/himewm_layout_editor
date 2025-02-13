@@ -16,7 +16,7 @@ fn show_layout() {
 
     variant.split(2, 1, SplitDirection::Vertical(600));
 
-    layout_group.new_variant_from(layout_group.default_idx());
+    layout_group.clone_variant(layout_group.default_idx());
 
     let new_variant = &mut layout_group.get_variants_mut()[1];
 

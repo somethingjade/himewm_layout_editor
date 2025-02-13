@@ -24,7 +24,7 @@ fn create_vertical_stack() {
         }
 
         if n != 5 {
-            layout_group.new_variant_from(layout_group.default_idx());
+            layout_group.clone_variant(layout_group.default_idx());
 
             idx += 1;
 
@@ -68,7 +68,7 @@ fn create_spiral() {
         }
 
         if n != 5 {
-            layout_group.new_variant_from(layout_group.default_idx());
+            layout_group.clone_variant(layout_group.default_idx());
 
             idx += 1;
 
@@ -131,7 +131,7 @@ fn create_horizontal_stack_starting_at_3() {
         }
 
         if n != 5 {
-            layout_group.new_variant_from(layout_group.default_idx());
+            layout_group.clone_variant(layout_group.default_idx());
 
             idx += 1;
 
