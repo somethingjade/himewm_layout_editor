@@ -17,13 +17,17 @@ enum Message {
     SelectedVariantStateChanged(usize),
     SelectedZoneChanged(usize),
     NewVariantState,
-    DuplicateVariantState,
+    CloneVariantState,
     DeleteVariantState,
     SwapVariantState(SwapDirection),
     SwapSplitDirection,
     Split,
     Swap,
     Merge,
+    NewVariant,
+    CloneVariant,
+    DeleteVariant,
+    SwapVariant(SwapDirection)
 }
 
 struct LayoutEditor {
@@ -64,7 +68,7 @@ impl Actions {
     fn initialize(sender: &app::Sender<Message>) -> Self {
         let selected_direction = Direction::Horizontal;
 
-        let mut widgets = group::Flex::default_fill().with_type(FlexType::Row);
+        let mut widgets = group::Flex::default_fill().row();
 
         let widgets_w = widgets.w() / 4;
 
@@ -72,7 +76,7 @@ impl Actions {
 
         WidgetExt::set_size(&mut widgets, widgets_w, widgets_h);
 
-        let mut split_actions_column = group::Flex::default_fill().with_type(FlexType::Column);
+        let mut split_actions_column = group::Flex::default().column();
 
         let mut horizontal_radio_button =
             button::RadioRoundButton::default().with_label("Horizontal");
@@ -85,7 +89,7 @@ impl Actions {
 
         vertical_radio_button.emit(sender.clone(), Message::SwapSplitDirection);
 
-        let mut split_at_selection = group::Flex::default_fill().with_type(FlexType::Row);
+        let mut split_at_selection = group::Flex::default().row();
 
         let split_at_selection_w = split_at_selection.w();
 
@@ -115,9 +119,9 @@ impl Actions {
 
         let columns_spacer = frame::Frame::default();
 
-        widgets.fixed(&columns_spacer, 16);
+        widgets.fixed(&columns_spacer, 4);
 
-        let mut merge_and_swap_column = group::Flex::default_fill().with_type(FlexType::Column);
+        let mut merge_and_swap_column = group::Flex::default().column();
 
         let mut swap_button = button::Button::default().with_label("Swap");
 
@@ -160,6 +164,7 @@ struct EditorWidgets {
     variant_state_pack: group::Pack,
     variant_state_display: group::Group,
     actions: Actions,
+    variant_actions: group::Flex
 }
 
 impl EditorWidgets {
@@ -194,15 +199,18 @@ impl EditorWidgets {
 
         let actions = Actions::initialize(sender);
 
+        let variant_actions = Self::create_variant_actions(sender);
+
         let editor = LayoutEditor::new(layout);
 
         let mut ret = EditorWidgets {
-            actions,
             editor,
             variant_list,
             variant_state_selection,
             variant_state_pack,
             variant_state_display,
+            actions,
+            variant_actions,
         };
 
         ret.update_highlighted_variant(
@@ -371,7 +379,7 @@ impl EditorWidgets {
     }
 
     fn create_variant_state_buttons(sender: &app::Sender<Message>) -> group::Flex {
-        let mut flex = group::Flex::default_fill().with_type(FlexType::Row);
+        let mut flex = group::Flex::default_fill().row();
 
         let new_width = flex.w() / 2;
 
@@ -381,7 +389,7 @@ impl EditorWidgets {
 
         let mut button_new = button::Button::default().with_label("New");
 
-        let mut button_duplicate = button::Button::default().with_label("Duplicate");
+        let mut button_clone = button::Button::default().with_label("Clone");
 
         let mut button_delete = button::Button::default().with_label("Delete");
 
@@ -393,7 +401,7 @@ impl EditorWidgets {
 
         flex.fixed(&button_new, 64);
 
-        flex.fixed(&button_duplicate, 80);
+        flex.fixed(&button_clone, 80);
 
         flex.fixed(&button_delete, 64);
 
@@ -405,7 +413,7 @@ impl EditorWidgets {
 
         button_new.emit(sender.clone(), Message::NewVariantState);
 
-        button_duplicate.emit(sender.clone(), Message::DuplicateVariantState);
+        button_clone.emit(sender.clone(), Message::CloneVariantState);
 
         button_delete.emit(sender.clone(), Message::DeleteVariantState);
 
@@ -453,6 +461,52 @@ impl EditorWidgets {
         group.end();
 
         return group;
+    }
+
+    fn create_variant_actions(sender: &app::Sender<Message>) -> group::Flex {
+        let mut flex = group::Flex::default_fill().column();
+
+        let w = flex.w()/8;
+        
+        WidgetExt::set_size(&mut flex, w, 144);
+
+        let create_row = group::Flex::default().with_size(0, 32).with_type(FlexType::Row);
+
+        let mut button_new = button::Button::default().with_label("New");
+
+        let mut button_clone = button::Button::default().with_label("Clone");
+
+        button_new.emit(sender.clone(), Message::NewVariant);
+
+        button_clone.emit(sender.clone(), Message::CloneVariant);
+
+        create_row.end();
+
+        flex.fixed(&create_row, 32);
+
+        let mut button_delete = button::Button::default().with_label("Delete");
+
+        button_delete.emit(sender.clone(), Message::DeleteVariant);
+
+        flex.fixed(&button_delete, 32);
+        
+        let swap_row = group::Flex::default().row();
+
+        let mut button_up = button::Button::default().with_label("@8>");
+
+        let mut button_down = button::Button::default().with_label("@2>");
+
+        button_up.emit(sender.clone(), Message::SwapVariant(SwapDirection::Previous));
+
+        button_down.emit(sender.clone(), Message::SwapVariant(SwapDirection::Next));
+
+        swap_row.end();
+
+        flex.fixed(&swap_row, 32);
+
+        flex.end();
+
+        return flex;
     }
 
     fn update_highlighted_variant(&mut self, old_idx: usize, new_idx: usize) {
@@ -941,6 +995,14 @@ impl LayoutEditorGUI {
                 .actions
                 .widgets
                 .set_pos(self.window.w() - editor.actions.widgets.w() - 4, 0);
+
+
+            editor
+                .variant_actions
+                .set_pos(
+                    0, 
+                    editor.variant_list.h() + 4
+                );
         }
     }
 
@@ -1131,7 +1193,7 @@ impl LayoutEditorGUI {
                     editor_widgets.new_variant_state(&self.sender);
                 }
 
-                Message::DuplicateVariantState => {
+                Message::CloneVariantState => {
                     let variant = &mut editor_widgets.editor.layout.get_variants_mut()
                         [editor_widgets.editor.selected_variant_idx];
 
@@ -1313,6 +1375,8 @@ impl LayoutEditorGUI {
                         &self.sender,
                     );
                 }
+
+                _ => (),
             }
         }
     }
