@@ -121,7 +121,7 @@ dependencies = [
 [[package]]
 name = "himewm_layout"
 version = "0.1.0"
-source = "git+https://github.com/somethingjade/himewm#f7d4103b0e91a5b8988151fa6ebcb17be9976bc8"
+source = "git+https://github.com/somethingjade/himewm#b0cb4c867b05207ee1c007c5d1823643757ebee0"
 dependencies = [
  "serde",
  "windows",
