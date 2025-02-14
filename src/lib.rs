@@ -27,7 +27,7 @@ enum Message {
     NewVariant,
     CloneVariant,
     DeleteVariant,
-    SwapVariant(SwapDirection)
+    SwapVariant(SwapDirection),
 }
 
 struct LayoutEditor {
@@ -164,7 +164,7 @@ struct EditorWidgets {
     variant_state_pack: group::Pack,
     variant_state_display: group::Group,
     actions: Actions,
-    variant_actions: group::Flex
+    variant_actions: group::Flex,
 }
 
 impl EditorWidgets {
@@ -296,7 +296,7 @@ impl EditorWidgets {
         return group;
     }
 
-    fn create_variant_list(variant: &Layout, sender: &app::Sender<Message>) -> group::Scroll {
+    fn create_variant_list(layout: &Layout, sender: &app::Sender<Message>) -> group::Scroll {
         let mut scroll = group::Scroll::default_fill().with_type(ScrollType::Vertical);
 
         scroll.set_size(scroll.w() / 8, scroll.h() / 2);
@@ -311,7 +311,7 @@ impl EditorWidgets {
 
         let pack = group::Pack::default_fill().with_type(PackType::Vertical);
 
-        for i in 0..variant.variants_len() {
+        for i in 0..layout.variants_len() {
             let mut b = button::Button::default().with_size(0, 20);
 
             b.set_label_size(16);
@@ -320,7 +320,7 @@ impl EditorWidgets {
 
             b.set_frame(FrameType::NoBox);
 
-            if i == variant.default_idx() {
+            if i == layout.default_idx() {
                 b.set_label(format!("{i} (default)").as_str());
             } else {
                 b.set_label(i.to_string().as_str());
@@ -337,7 +337,7 @@ impl EditorWidgets {
     }
 
     fn create_variant_state_selection(
-        variant: &Layout,
+        layout: &Layout,
         sender: &app::Sender<Message>,
     ) -> group::Scroll {
         let mut scroll = group::Scroll::default_fill().with_type(ScrollType::Horizontal);
@@ -348,34 +348,44 @@ impl EditorWidgets {
 
         scroll.set_color(Color::Background2);
 
-        for variant in variant.get_variants() {
-            let mut pack = group::Pack::default()
-                .with_size(scroll.w() - 8, 64)
-                .with_type(PackType::Horizontal)
-                .center_of_parent();
-
-            pack.set_spacing(4);
-
-            for j in 0..variant.manual_zones_until() {
-                let mut b = button::Button::default()
-                    .with_size(64, 0)
-                    .with_label((j + 1).to_string().as_str());
-
-                b.set_color(Color::Background2);
-
-                b.set_selection_color(Color::Background);
-
-                b.emit(sender.clone(), Message::SelectedVariantStateChanged(j));
-            }
-
-            pack.end();
-
-            pack.hide();
+        for variant in layout.get_variants() {
+            Self::create_variant_pack(&scroll, variant, sender);
         }
 
         scroll.end();
 
         return scroll;
+    }
+
+    fn create_variant_pack(
+        scroll: &group::Scroll,
+        variant: &Variant,
+        sender: &app::Sender<Message>,
+    ) -> group::Pack {
+        let mut pack = group::Pack::default()
+            .with_size(scroll.w() - 8, 64)
+            .with_type(PackType::Horizontal)
+            .center_of_parent();
+
+        pack.set_spacing(4);
+
+        for j in 0..variant.manual_zones_until() {
+            let mut b = button::Button::default()
+                .with_size(64, 0)
+                .with_label((j + 1).to_string().as_str());
+
+            b.set_color(Color::Background2);
+
+            b.set_selection_color(Color::Background);
+
+            b.emit(sender.clone(), Message::SelectedVariantStateChanged(j));
+        }
+
+        pack.end();
+
+        pack.hide();
+
+        return pack;
     }
 
     fn create_variant_state_buttons(sender: &app::Sender<Message>) -> group::Flex {
@@ -466,11 +476,13 @@ impl EditorWidgets {
     fn create_variant_actions(sender: &app::Sender<Message>) -> group::Flex {
         let mut flex = group::Flex::default_fill().column();
 
-        let w = flex.w()/8;
-        
+        let w = flex.w() / 8;
+
         WidgetExt::set_size(&mut flex, w, 144);
 
-        let create_row = group::Flex::default().with_size(0, 32).with_type(FlexType::Row);
+        let create_row = group::Flex::default()
+            .with_size(0, 32)
+            .with_type(FlexType::Row);
 
         let mut button_new = button::Button::default().with_label("New");
 
@@ -489,14 +501,17 @@ impl EditorWidgets {
         button_delete.emit(sender.clone(), Message::DeleteVariant);
 
         flex.fixed(&button_delete, 32);
-        
+
         let swap_row = group::Flex::default().row();
 
         let mut button_up = button::Button::default().with_label("@8>");
 
         let mut button_down = button::Button::default().with_label("@2>");
 
-        button_up.emit(sender.clone(), Message::SwapVariant(SwapDirection::Previous));
+        button_up.emit(
+            sender.clone(),
+            Message::SwapVariant(SwapDirection::Previous),
+        );
 
         button_down.emit(sender.clone(), Message::SwapVariant(SwapDirection::Next));
 
@@ -892,7 +907,7 @@ impl EditorWidgets {
 
         variant_display_group.begin();
 
-        let new_display = EditorWidgets::display_group_from_variant_state(
+        let mut new_display = EditorWidgets::display_group_from_variant_state(
             w,
             h,
             variant,
@@ -904,15 +919,64 @@ impl EditorWidgets {
 
         variant_display_group.remove(&new_display);
 
-        WidgetBase::delete(
-            variant_display_group
-                .child(variant_state_idx as i32)
-                .unwrap(),
-        );
+        if let Some(old_display) = variant_display_group.child(variant_state_idx as i32) {
+            WidgetBase::delete(old_display);
+        } else {
+            new_display.hide();
+        }
 
         variant_display_group.insert(&new_display, variant_state_idx as i32);
 
         self.reset_zone_selection();
+    }
+
+    fn add_new_variant(&mut self, variant: Variant, sender: &app::Sender<Message>) {
+        let mut variants_pack =
+            group::Pack::from_dyn_widget(&self.variant_list.child(0).unwrap()).unwrap();
+
+        let idx = variants_pack.children() as usize;
+
+        let mut new_variant_button = button::Button::default().with_size(0, 20);
+
+        new_variant_button.set_label_size(16);
+
+        new_variant_button.set_color(colors::html::DodgerBlue);
+
+        new_variant_button.set_frame(FrameType::NoBox);
+
+        new_variant_button.set_label(idx.to_string().as_str());
+
+        new_variant_button.emit(sender.clone(), Message::SelectedVariantChanged(idx));
+
+        variants_pack.add(&new_variant_button);
+
+        let variant_state_selection = &mut self.variant_state_selection;
+
+        variant_state_selection.begin();
+
+        variant_state_selection.add(&EditorWidgets::create_variant_pack(
+            variant_state_selection,
+            &variant,
+            sender,
+        ));
+
+        variant_state_selection.end();
+
+        self.variant_state_display.begin();
+
+        let mut new_variant_display_group = group::Group::default_fill();
+
+        self.variant_state_display.end();
+
+        let manual_zones_until = variant.manual_zones_until();
+
+        self.editor.layout.get_variants_mut().push(variant);
+
+        for i in 0..manual_zones_until {
+            self.update_variant_state_display(idx, i, sender);
+        }
+
+        new_variant_display_group.hide();
     }
 
     fn decrement_all_variant_state_buttons_after(
@@ -996,13 +1060,9 @@ impl LayoutEditorGUI {
                 .widgets
                 .set_pos(self.window.w() - editor.actions.widgets.w() - 4, 0);
 
-
             editor
                 .variant_actions
-                .set_pos(
-                    0, 
-                    editor.variant_list.h() + 4
-                );
+                .set_pos(0, editor.variant_list.h() + 4);
         }
     }
 
@@ -1376,7 +1436,59 @@ impl LayoutEditorGUI {
                     );
                 }
 
-                _ => (),
+                Message::NewVariant => {
+                    let layout = &editor_widgets.editor.layout;
+
+                    let w = layout.get_monitor_rect().w();
+
+                    let h = layout.get_monitor_rect().h();
+
+                    let new_variant = Variant::new(w, h);
+
+                    editor_widgets.add_new_variant(new_variant, &self.sender);
+
+                    self.sender.send(Message::SelectedVariantChanged(
+                        editor_widgets.editor.layout.variants_len() - 1,
+                    ));
+                }
+
+                Message::CloneVariant => {
+                    let layout = &mut editor_widgets.editor.layout;
+
+                    let new_variant =
+                        layout.get_variants()[editor_widgets.editor.selected_variant_idx].clone();
+
+                    editor_widgets.add_new_variant(new_variant, &self.sender);
+
+                    self.sender.send(Message::SelectedVariantChanged(
+                        editor_widgets.editor.layout.variants_len() - 1,
+                    ));
+                }
+
+                Message::DeleteVariant => {}
+
+                Message::SwapVariant(swap_direction) => {
+                    let selected_variant_idx = editor_widgets.editor.selected_variant_idx;
+
+                    let new_idx = match swap_direction {
+                        SwapDirection::Previous => {
+                            if selected_variant_idx == 0 {
+                                return;
+                            } else {
+                                selected_variant_idx - 1
+                            }
+                        }
+                        SwapDirection::Next => {
+                            if selected_variant_idx
+                                == editor_widgets.editor.layout.variants_len() - 1
+                            {
+                                return;
+                            } else {
+                                selected_variant_idx + 1
+                            }
+                        }
+                    };
+                }
             }
         }
     }
