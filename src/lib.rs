@@ -1465,7 +1465,60 @@ impl LayoutEditorGUI {
                     ));
                 }
 
-                Message::DeleteVariant => {}
+                Message::DeleteVariant => {
+                    let selected_variant_idx = editor_widgets.editor.selected_variant_idx;
+
+                    editor_widgets
+                        .editor
+                        .layout
+                        .delete_variant(selected_variant_idx);
+
+                    let variants_pack = group::Pack::from_dyn_widget(
+                        &editor_widgets.variant_list.child(0).unwrap(),
+                    )
+                    .unwrap();
+
+                    let variant_state_selection = &editor_widgets.variant_state_selection;
+
+                    let variant_state_display = &editor_widgets.variant_state_display;
+
+                    WidgetBase::delete(variants_pack.child(selected_variant_idx as i32).unwrap());
+
+                    WidgetBase::delete(
+                        variant_state_selection
+                            .child(selected_variant_idx as i32)
+                            .unwrap(),
+                    );
+
+                    WidgetBase::delete(
+                        variant_state_display
+                            .child(selected_variant_idx as i32)
+                            .unwrap(),
+                    );
+
+                    if selected_variant_idx == editor_widgets.editor.layout.variants_len() {
+                        editor_widgets.editor.selected_variant_idx = selected_variant_idx - 1;
+
+                        self.sender
+                            .send(Message::SelectedVariantChanged(selected_variant_idx - 1));
+                    } else {
+                        self.sender
+                            .send(Message::SelectedVariantChanged(selected_variant_idx));
+                    }
+
+                    for i in selected_variant_idx as i32..variants_pack.children() {
+                        let b =
+                            &mut button::Button::from_dyn_widget(&variants_pack.child(i).unwrap())
+                                .unwrap();
+
+                        b.set_label(i.to_string().as_str());
+
+                        b.emit(
+                            self.sender.clone(),
+                            Message::SelectedVariantChanged(i as usize),
+                        );
+                    }
+                }
 
                 Message::SwapVariant(swap_direction) => {
                     let selected_variant_idx = editor_widgets.editor.selected_variant_idx;
