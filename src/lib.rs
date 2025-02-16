@@ -28,6 +28,7 @@ enum Message {
     CloneVariant,
     DeleteVariant,
     SwapVariant(SwapDirection),
+    SetVariantAsDefault,
 }
 
 struct LayoutEditor {
@@ -52,9 +53,9 @@ impl LayoutEditor {
     }
 }
 
-pub struct Actions {
-    pub widgets: group::Flex,
-    pub split_bound_max: Option<i32>,
+struct Actions {
+    widgets: group::Flex,
+    split_bound_max: Option<i32>,
     selected_direction: Direction,
     split_button: button::Button,
     split_axis_text: frame::Frame,
@@ -144,15 +145,84 @@ impl Actions {
         widgets.end();
 
         return Actions {
+            widgets,
             selected_direction,
             split_bound_max: None,
             split_button,
             split_axis_text,
             split_at_input,
             split_bounds_text,
-            widgets,
             merge_button,
             swap_button,
+        };
+    }
+}
+
+struct VariantActions {
+    widgets: group::Flex,
+    delete_button: button::Button,
+    set_as_default_button: button::Button
+}
+
+impl VariantActions {
+    fn initialize(sender: &app::Sender<Message>) -> Self {
+        let mut widgets= group::Flex::default_fill().column();
+
+        let w = widgets.w() / 8;
+
+        WidgetExt::set_size(&mut widgets, w, 144);
+
+        let create_row = group::Flex::default()
+            .with_size(0, 32)
+            .with_type(FlexType::Row);
+
+        let mut new_button= button::Button::default().with_label("New");
+
+        let mut clone_button= button::Button::default().with_label("Clone");
+
+        new_button.emit(sender.clone(), Message::NewVariant);
+
+        clone_button.emit(sender.clone(), Message::CloneVariant);
+
+        create_row.end();
+
+        widgets.fixed(&create_row, 32);
+
+        let mut delete_button= button::Button::default().with_label("Delete");
+
+        delete_button.emit(sender.clone(), Message::DeleteVariant);
+
+        widgets.fixed(&delete_button, 32);
+        
+        let mut set_as_default_button = button::Button::default().with_label("Set as default");
+
+        set_as_default_button.emit(sender.clone(), Message::SetVariantAsDefault);
+
+        widgets.fixed(&set_as_default_button, 32);
+
+        let swap_row = group::Flex::default().row();
+
+        let mut up_button= button::Button::default().with_label("@8>");
+
+        let mut down_button= button::Button::default().with_label("@2>");
+
+        up_button.emit(
+            sender.clone(),
+            Message::SwapVariant(SwapDirection::Previous),
+        );
+
+        down_button.emit(sender.clone(), Message::SwapVariant(SwapDirection::Next));
+
+        swap_row.end();
+
+        widgets.fixed(&swap_row, 32);
+
+        widgets.end();
+
+        return VariantActions {
+            widgets,
+            delete_button,
+            set_as_default_button,
         };
     }
 }
@@ -164,7 +234,7 @@ struct EditorWidgets {
     variant_state_pack: group::Pack,
     variant_state_display: group::Group,
     actions: Actions,
-    variant_actions: group::Flex,
+    variant_actions: VariantActions,
 }
 
 impl EditorWidgets {
@@ -199,7 +269,7 @@ impl EditorWidgets {
 
         let actions = Actions::initialize(sender);
 
-        let variant_actions = Self::create_variant_actions(sender);
+        let variant_actions = VariantActions::initialize(sender);
 
         let editor = LayoutEditor::new(layout);
 
@@ -244,6 +314,14 @@ impl EditorWidgets {
                 ret.editor.selected_variant_state_idx,
             ),
         );
+        
+        if ret.editor.layout.variants_len() == 1 {
+            ret.variant_actions.delete_button.deactivate();
+        }
+
+        if ret.editor.selected_variant_idx == ret.editor.layout.default_idx() {
+            ret.variant_actions.set_as_default_button.deactivate();
+        }
 
         return ret;
     }
@@ -349,7 +427,7 @@ impl EditorWidgets {
         scroll.set_color(Color::Background2);
 
         for variant in layout.get_variants() {
-            Self::create_variant_pack(&scroll, variant, sender);
+            Self::create_state_selection_pack(&scroll, variant, sender);
         }
 
         scroll.end();
@@ -357,7 +435,7 @@ impl EditorWidgets {
         return scroll;
     }
 
-    fn create_variant_pack(
+    fn create_state_selection_pack(
         scroll: &group::Scroll,
         variant: &Variant,
         sender: &app::Sender<Message>,
@@ -397,42 +475,42 @@ impl EditorWidgets {
 
         flex.set_pad(4);
 
-        let mut button_new = button::Button::default().with_label("New");
+        let mut new_button= button::Button::default().with_label("New");
 
-        let mut button_clone = button::Button::default().with_label("Clone");
+        let mut clone_button= button::Button::default().with_label("Clone");
 
-        let mut button_delete = button::Button::default().with_label("Delete");
+        let mut delete_button= button::Button::default().with_label("Delete");
 
         let _frame = frame::Frame::default();
 
-        let mut button_left = button::Button::default().with_label("@<");
+        let mut left_button= button::Button::default().with_label("@<");
 
-        let mut button_right = button::Button::default().with_label("@>");
+        let mut right_button= button::Button::default().with_label("@>");
 
-        flex.fixed(&button_new, 64);
+        flex.fixed(&new_button, 64);
 
-        flex.fixed(&button_clone, 80);
+        flex.fixed(&clone_button, 80);
 
-        flex.fixed(&button_delete, 64);
+        flex.fixed(&delete_button, 64);
 
-        flex.fixed(&button_left, 32);
+        flex.fixed(&left_button, 32);
 
-        flex.fixed(&button_right, 32);
+        flex.fixed(&right_button, 32);
 
         flex.end();
 
-        button_new.emit(sender.clone(), Message::NewVariantState);
+        new_button.emit(sender.clone(), Message::NewVariantState);
 
-        button_clone.emit(sender.clone(), Message::CloneVariantState);
+        clone_button.emit(sender.clone(), Message::CloneVariantState);
 
-        button_delete.emit(sender.clone(), Message::DeleteVariantState);
+        delete_button.emit(sender.clone(), Message::DeleteVariantState);
 
-        button_left.emit(
+        left_button.emit(
             sender.clone(),
             Message::SwapVariantState(SwapDirection::Previous),
         );
 
-        button_right.emit(
+        right_button.emit(
             sender.clone(),
             Message::SwapVariantState(SwapDirection::Next),
         );
@@ -471,57 +549,6 @@ impl EditorWidgets {
         group.end();
 
         return group;
-    }
-
-    fn create_variant_actions(sender: &app::Sender<Message>) -> group::Flex {
-        let mut flex = group::Flex::default_fill().column();
-
-        let w = flex.w() / 8;
-
-        WidgetExt::set_size(&mut flex, w, 144);
-
-        let create_row = group::Flex::default()
-            .with_size(0, 32)
-            .with_type(FlexType::Row);
-
-        let mut button_new = button::Button::default().with_label("New");
-
-        let mut button_clone = button::Button::default().with_label("Clone");
-
-        button_new.emit(sender.clone(), Message::NewVariant);
-
-        button_clone.emit(sender.clone(), Message::CloneVariant);
-
-        create_row.end();
-
-        flex.fixed(&create_row, 32);
-
-        let mut button_delete = button::Button::default().with_label("Delete");
-
-        button_delete.emit(sender.clone(), Message::DeleteVariant);
-
-        flex.fixed(&button_delete, 32);
-
-        let swap_row = group::Flex::default().row();
-
-        let mut button_up = button::Button::default().with_label("@8>");
-
-        let mut button_down = button::Button::default().with_label("@2>");
-
-        button_up.emit(
-            sender.clone(),
-            Message::SwapVariant(SwapDirection::Previous),
-        );
-
-        button_down.emit(sender.clone(), Message::SwapVariant(SwapDirection::Next));
-
-        swap_row.end();
-
-        flex.fixed(&swap_row, 32);
-
-        flex.end();
-
-        return flex;
     }
 
     fn update_highlighted_variant(&mut self, old_idx: usize, new_idx: usize) {
@@ -954,7 +981,7 @@ impl EditorWidgets {
 
         variant_state_selection.begin();
 
-        variant_state_selection.add(&EditorWidgets::create_variant_pack(
+        variant_state_selection.add(&EditorWidgets::create_state_selection_pack(
             variant_state_selection,
             &variant,
             sender,
@@ -977,6 +1004,16 @@ impl EditorWidgets {
         }
 
         new_variant_display_group.hide();
+    }
+
+    fn update_default_variant_label(&mut self, old_idx: usize, new_idx: usize) {
+        let variants_pack = &mut group::Pack::from_dyn_widget(&self.variant_list.child(0).unwrap()).unwrap();
+        
+        if let Some(button) = &mut variants_pack.child(old_idx as i32) {
+            button.set_label(old_idx.to_string().as_str());
+        }
+
+        variants_pack.child(new_idx as i32).unwrap().set_label(format!("{new_idx} (default)").as_str());
     }
 
     fn decrement_all_variant_state_buttons_after(
@@ -1062,6 +1099,7 @@ impl LayoutEditorGUI {
 
             editor
                 .variant_actions
+                .widgets
                 .set_pos(0, editor.variant_list.h() + 4);
         }
     }
@@ -1099,6 +1137,13 @@ impl LayoutEditorGUI {
                         (old_variant_idx, old_variant_state_idx),
                         (idx, 0),
                     );
+
+                    if idx == editor_widgets.editor.layout.default_idx() {
+                        editor_widgets.variant_actions.set_as_default_button.deactivate();
+                    }
+                    else if !editor_widgets.variant_actions.set_as_default_button.active() {
+                        editor_widgets.variant_actions.set_as_default_button.activate();
+                    }
                 }
 
                 Message::SelectedVariantStateChanged(idx) => {
@@ -1450,6 +1495,10 @@ impl LayoutEditorGUI {
                     self.sender.send(Message::SelectedVariantChanged(
                         editor_widgets.editor.layout.variants_len() - 1,
                     ));
+                    
+                    if !editor_widgets.variant_actions.delete_button.active() {
+                        editor_widgets.variant_actions.delete_button.activate();
+                    }
                 }
 
                 Message::CloneVariant => {
@@ -1463,10 +1512,16 @@ impl LayoutEditorGUI {
                     self.sender.send(Message::SelectedVariantChanged(
                         editor_widgets.editor.layout.variants_len() - 1,
                     ));
+
+                    if !editor_widgets.variant_actions.delete_button.active() {
+                        editor_widgets.variant_actions.delete_button.activate();
+                    }
                 }
 
                 Message::DeleteVariant => {
                     let selected_variant_idx = editor_widgets.editor.selected_variant_idx;
+
+                    let old_default_variant_idx = editor_widgets.editor.layout.default_idx();
 
                     editor_widgets
                         .editor
@@ -1518,17 +1573,39 @@ impl LayoutEditorGUI {
                             Message::SelectedVariantChanged(i as usize),
                         );
                     }
+
+                    editor_widgets.update_default_variant_label(old_default_variant_idx, editor_widgets.editor.layout.default_idx());
+                    
+                    if editor_widgets.editor.layout.variants_len() == 1 {
+                        editor_widgets.variant_actions.delete_button.deactivate();
+                    }
                 }
 
                 Message::SwapVariant(swap_direction) => {
                     let selected_variant_idx = editor_widgets.editor.selected_variant_idx;
 
-                    let new_idx = match swap_direction {
+                    let new_idx;
+
+                    let variants_pack = &mut group::Pack::from_dyn_widget(&editor_widgets.variant_list.child(0).unwrap()).unwrap();
+
+                    let variant_state_selection = &mut editor_widgets.variant_state_selection;
+
+                    let variant_state_display = &mut editor_widgets.variant_state_display;
+
+                    let first_idx;
+
+                    let second_idx;
+
+                    match swap_direction {
                         SwapDirection::Previous => {
                             if selected_variant_idx == 0 {
                                 return;
                             } else {
-                                selected_variant_idx - 1
+                                first_idx = selected_variant_idx - 1;
+
+                                second_idx = selected_variant_idx;
+                                
+                                new_idx = selected_variant_idx - 1;
                             }
                         }
                         SwapDirection::Next => {
@@ -1537,10 +1614,87 @@ impl LayoutEditorGUI {
                             {
                                 return;
                             } else {
-                                selected_variant_idx + 1
+
+                                first_idx = selected_variant_idx;
+
+                                second_idx = selected_variant_idx + 1;
+                                
+                                new_idx = selected_variant_idx + 1;
                             }
                         }
                     };
+
+                    editor_widgets.editor.layout.swap_variants(first_idx, second_idx);
+
+                    let first_variant_button = &mut button::Button::from_dyn_widget(&variants_pack.child(first_idx as i32).unwrap()).unwrap();
+
+                    let second_variant_button = &mut button::Button::from_dyn_widget(&variants_pack.child(second_idx as i32).unwrap()).unwrap();
+
+                    if second_idx == editor_widgets.editor.layout.default_idx() {
+                        first_variant_button.set_label(format!("{second_idx} (default)").as_str());
+                    }
+                    else {
+                        first_variant_button.set_label(second_idx.to_string().as_str());
+                    }
+
+                    if first_idx == editor_widgets.editor.layout.default_idx() {
+                        second_variant_button.set_label(format!("{first_idx} (default)").as_str());
+                    }
+                    else {
+                        second_variant_button.set_label(first_idx.to_string().as_str());
+                    }
+
+                    first_variant_button.emit(self.sender.clone(), Message::SelectedVariantChanged(second_idx));
+                    
+                    second_variant_button.emit(self.sender.clone(), Message::SelectedVariantChanged(first_idx));
+
+                    let first_state_selection_pack = variant_state_selection.child(first_idx as i32).unwrap();
+
+                    let second_state_selection_pack = variant_state_selection.child(second_idx as i32).unwrap();
+
+                    let first_variant_state_display_group = variant_state_display.child(first_idx as i32).unwrap();
+
+                    let second_variant_state_display_group = variant_state_display.child(second_idx as i32).unwrap();
+
+                    variants_pack.remove_by_index(second_idx as i32);
+
+                    variants_pack.remove_by_index(first_idx as i32);
+
+                    variant_state_selection.remove_by_index(second_idx as i32);
+
+                    variant_state_selection.remove_by_index(first_idx as i32);
+
+                    variant_state_display.remove_by_index(second_idx as i32);
+
+                    variant_state_display.remove_by_index(first_idx as i32);
+
+                    variants_pack.insert(second_variant_button, first_idx as i32);
+
+                    variants_pack.insert(first_variant_button, second_idx as i32);
+
+                    variant_state_selection.insert(&second_state_selection_pack, first_idx as i32);
+
+                    variant_state_selection.insert(&first_state_selection_pack, second_idx as i32);
+
+                    variant_state_display.insert(&second_variant_state_display_group, first_idx as i32);
+
+                    variant_state_display.insert(&first_variant_state_display_group, second_idx as i32);
+
+                    editor_widgets.editor.selected_variant_idx = new_idx;
+
+                    self.sender.send(Message::SelectedVariantChanged(new_idx));
+                }
+
+                Message::SetVariantAsDefault => {
+                    let selected_variant_idx = editor_widgets.editor.selected_variant_idx;
+
+                    let old_default_variant_idx = editor_widgets.editor.layout.default_idx();
+
+                    editor_widgets.editor.layout.set_default_idx(selected_variant_idx);
+
+                    editor_widgets.update_default_variant_label(old_default_variant_idx, selected_variant_idx);
+
+                    editor_widgets.variant_actions.set_as_default_button.deactivate();
                 }
             }
         }
