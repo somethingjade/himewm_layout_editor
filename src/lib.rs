@@ -227,6 +227,81 @@ impl VariantActions {
     }
 }
 
+struct RepeatingSplitActions {}
+
+impl RepeatingSplitActions {
+    fn initialize() -> Self {
+        return RepeatingSplitActions {};
+    }
+}
+
+struct EndBehaviourActions {
+    widgets: group::Flex,
+    direction_select: group::Flex,
+    zone_idx_choice: menu::Choice,
+    repeating_split_actions: RepeatingSplitActions,
+}
+
+impl EndBehaviourActions {
+    fn initialize(sender: &app::Sender<Message>) -> Self {
+        let mut widgets = group::Flex::default_fill().row();
+
+        let w = widgets.w() / 3;
+
+        let h = widgets.h() / 2;
+
+        WidgetExt::set_size(&mut widgets, w, h);
+
+        let behaviour_column = group::Flex::default().column();
+
+        let _directional_radio_button =
+            button::RadioRoundButton::default().with_label("Directional");
+
+        let mut direction_select_indent = group::Flex::default().row();
+
+        let indent_spacer = frame::Frame::default();
+
+        direction_select_indent.fixed(&indent_spacer, 16);
+
+        let direction_select = group::Flex::default().column();
+
+        let _horizontal_radio_button = button::RadioRoundButton::default().with_label("Horizontal");
+
+        let _vertical_radio_button = button::RadioRoundButton::default().with_label("Vertical");
+
+        direction_select.end();
+
+        direction_select_indent.end();
+
+        let _repeating_radio_button = button::RadioRoundButton::default().with_label("Repeating");
+
+        let mut zone_idx_flex = group::Flex::default().row();
+
+        let zone_idx_text = frame::Frame::default()
+            .with_align(Align::Left.union(Align::Inside))
+            .with_label("Zone index: ");
+
+        zone_idx_flex.fixed(&zone_idx_text, 96);
+
+        let zone_idx_choice = menu::Choice::default();
+
+        zone_idx_flex.end();
+
+        let _preview_button = button::Button::default().with_label("Preview");
+
+        behaviour_column.end();
+
+        widgets.end();
+
+        return EndBehaviourActions {
+            widgets,
+            direction_select,
+            zone_idx_choice,
+            repeating_split_actions: RepeatingSplitActions::initialize(),
+        };
+    }
+}
+
 struct EditorWidgets {
     editor: LayoutEditor,
     variant_list: group::Scroll,
@@ -235,6 +310,7 @@ struct EditorWidgets {
     variant_state_display: group::Group,
     actions: Actions,
     variant_actions: VariantActions,
+    end_behaviour_actions: EndBehaviourActions,
 }
 
 impl EditorWidgets {
@@ -271,6 +347,8 @@ impl EditorWidgets {
 
         let variant_actions = VariantActions::initialize(sender);
 
+        let end_behaviour_actions = EndBehaviourActions::initialize(sender);
+
         let editor = LayoutEditor::new(layout);
 
         let mut ret = EditorWidgets {
@@ -281,6 +359,7 @@ impl EditorWidgets {
             variant_state_display,
             actions,
             variant_actions,
+            end_behaviour_actions,
         };
 
         ret.update_highlighted_variant(
@@ -1105,6 +1184,11 @@ impl LayoutEditorGUI {
                 .variant_actions
                 .widgets
                 .set_pos(0, editor.variant_list.h() + 4);
+
+            editor.end_behaviour_actions.widgets.set_pos(
+                self.window.w() - editor.end_behaviour_actions.widgets.w(),
+                self.window.h() / 2,
+            );
         }
     }
 
