@@ -24,7 +24,7 @@ fn create_vertical_stack() {
         }
 
         if n != 5 {
-            layout_group.clone_variant(layout_group.default_idx());
+            layout_group.clone_variant(layout_group.default_variant_idx());
 
             idx += 1;
 
@@ -34,7 +34,7 @@ fn create_vertical_stack() {
         }
     }
 
-    layout_group.set_default_idx(2);
+    layout_group.set_default_variant_idx(2);
 
     export_layout_to_downloads(&layout_group, "vertical_stack").unwrap();
 }
@@ -68,7 +68,7 @@ fn create_spiral() {
         }
 
         if n != 5 {
-            layout_group.clone_variant(layout_group.default_idx());
+            layout_group.clone_variant(layout_group.default_variant_idx());
 
             idx += 1;
 
@@ -78,7 +78,7 @@ fn create_spiral() {
         }
     }
 
-    layout_group.set_default_idx(2);
+    layout_group.set_default_variant_idx(2);
 
     export_layout_to_downloads(&layout_group, "spiral").unwrap();
 }
@@ -131,7 +131,7 @@ fn create_horizontal_stack_starting_at_3() {
         }
 
         if n != 5 {
-            layout_group.clone_variant(layout_group.default_idx());
+            layout_group.clone_variant(layout_group.default_variant_idx());
 
             idx += 1;
 
@@ -149,7 +149,7 @@ fn create_horizontal_stack_starting_at_3() {
         variant.split(3, 0, SplitDirection::Vertical(600));
     }
 
-    layout_group.set_default_idx(2);
+    layout_group.set_default_variant_idx(2);
 
     export_layout_to_downloads(&layout_group, "horizontal_stack_starting_at_3").unwrap();
 }

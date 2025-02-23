@@ -4,7 +4,7 @@ use himewm_layout::*;
 fn show_layout() {
     let mut layout_group = Layout::new(1920, 1200);
 
-    let idx = layout_group.default_idx();
+    let idx = layout_group.default_variant_idx();
 
     let variant = &mut layout_group.get_variants_mut()[idx];
 
@@ -16,7 +16,7 @@ fn show_layout() {
 
     variant.split(2, 1, SplitDirection::Vertical(600));
 
-    layout_group.clone_variant(layout_group.default_idx());
+    layout_group.clone_variant(layout_group.default_variant_idx());
 
     let new_variant = &mut layout_group.get_variants_mut()[1];
 
