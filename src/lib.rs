@@ -1,9 +1,12 @@
+use controller::handle_events;
 use enums::{Align, Color, FrameType};
-use fltk::{group::FlexType, prelude::InputExt, *};
+use fltk::{enums::Shortcut, group::FlexType, menu::MenuFlag, prelude::{InputExt, MenuExt}, *};
 use fltk_theme::*;
 use group::{PackType, ScrollType};
 use himewm_layout::*;
 use prelude::{GroupExt, WidgetBase, WidgetExt};
+
+mod controller;
 
 #[derive(Clone)]
 enum SwapDirection {
@@ -29,6 +32,9 @@ enum Message {
     DeleteVariant,
     SwapVariant(SwapDirection),
     SetVariantAsDefault,
+    PreviewExtend,
+    EndZoneIdxChanged(usize),
+    SwapEndTilingDirection,
 }
 
 struct LayoutEditor {
@@ -227,6 +233,51 @@ impl VariantActions {
     }
 }
 
+struct DirectionalActions {
+    widgets: group::Flex,
+}
+
+impl DirectionalActions {
+    fn initialize(layout: &Layout, sender: &app::Sender<Message>) -> Self {
+        let widgets = group::Flex::default_fill().column();
+
+        let _direction_label = frame::Frame::default().with_label("Direction");
+
+        let mut horizontal_radio_button = button::RadioRoundButton::default().with_label("Horizontal");
+
+        horizontal_radio_button.emit(sender.clone(), Message::SwapEndTilingDirection);
+
+        let mut vertical_radio_button = button::RadioRoundButton::default().with_label("Vertical");
+
+        vertical_radio_button.emit(sender.clone(), Message::SwapEndTilingDirection);
+
+        match layout.get_variants()[layout.default_variant_idx()].get_end_tiling_direction() {
+            Some(direction) => {
+                match direction {
+                    Direction::Horizontal => {
+                        horizontal_radio_button.toggle(true);
+                    }
+                    Direction::Vertical => {
+                        vertical_radio_button.toggle(true);
+                    }
+                }
+            }
+
+            None => {
+                vertical_radio_button.toggle(true);
+            }
+        }
+
+        let _compression_frame = frame::Frame::default();
+
+        widgets.end();
+
+        return DirectionalActions {
+            widgets,
+        };
+    }
+}
+
 struct RepeatingSplitActions {}
 
 impl RepeatingSplitActions {
@@ -236,50 +287,39 @@ impl RepeatingSplitActions {
 }
 
 struct EndBehaviourActions {
+    preview_count: u32,
     widgets: group::Flex,
-    direction_select: group::Flex,
     zone_idx_choice: menu::Choice,
+    directional_actions: DirectionalActions,
     repeating_split_actions: RepeatingSplitActions,
 }
 
 impl EndBehaviourActions {
-    fn initialize(sender: &app::Sender<Message>) -> Self {
+    fn initialize(layout: &Layout, sender: &app::Sender<Message>) -> Self {
         let mut widgets = group::Flex::default_fill().row();
 
         let w = widgets.w() / 3;
 
-        let h = widgets.h() / 2;
+        let h = widgets.h() / 4;
 
         WidgetExt::set_size(&mut widgets, w, h);
 
-        let behaviour_column = group::Flex::default().column();
+        let mut behaviour_column = group::Flex::default().column();
 
-        let _directional_radio_button =
+        let _offset_frame = frame::Frame::default();
+
+        let mut directional_radio_button =
             button::RadioRoundButton::default().with_label("Directional");
 
-        let mut direction_select_indent = group::Flex::default().row();
-
-        let indent_spacer = frame::Frame::default();
-
-        direction_select_indent.fixed(&indent_spacer, 16);
-
-        let direction_select = group::Flex::default().column();
-
-        let _horizontal_radio_button = button::RadioRoundButton::default().with_label("Horizontal");
-
-        let _vertical_radio_button = button::RadioRoundButton::default().with_label("Vertical");
-
-        direction_select.end();
-
-        direction_select_indent.end();
-
         let _repeating_radio_button = button::RadioRoundButton::default().with_label("Repeating");
+
+        directional_radio_button.toggle(true);
 
         let mut zone_idx_flex = group::Flex::default().row();
 
         let zone_idx_text = frame::Frame::default()
             .with_align(Align::Left.union(Align::Inside))
-            .with_label("Zone index: ");
+            .with_label("In zone: ");
 
         zone_idx_flex.fixed(&zone_idx_text, 96);
 
@@ -287,23 +327,61 @@ impl EndBehaviourActions {
 
         zone_idx_flex.end();
 
-        let _preview_button = button::Button::default().with_label("Preview");
+        behaviour_column.fixed(&zone_idx_flex, 32);
+
+        let mut preview_button = button::Button::default().with_label("Preview next");
+
+        preview_button.emit(sender.clone(), Message::PreviewExtend);
+
+        behaviour_column.fixed(&preview_button, 32);
 
         behaviour_column.end();
 
+        let column_spacer = frame::Frame::default();
+
+        widgets.fixed(&column_spacer, 16);
+
         widgets.end();
 
+        let directional_actions = DirectionalActions::initialize(layout, sender);
+
+        widgets.add(&directional_actions.widgets);
+
+        let repeating_split_actions = RepeatingSplitActions::initialize();
+
         return EndBehaviourActions {
+            preview_count: 0,
             widgets,
-            direction_select,
             zone_idx_choice,
-            repeating_split_actions: RepeatingSplitActions::initialize(),
+            directional_actions,
+            repeating_split_actions,
         };
+    }
+    
+}
+
+#[derive(Clone)]
+struct Buffers {
+    layout: Layout,
+    variant_state_selection: group::Scroll,
+    variant_state_pack: group::Pack,
+    variant_state_display: group::Group
+}
+
+impl Buffers {
+    fn new(layout: Layout, variant_state_selection: group::Scroll, variant_state_pack: group::Pack, variant_state_display: group::Group) -> Self {
+        Buffers {
+            layout,
+            variant_state_selection,
+            variant_state_pack,
+            variant_state_display,
+        }
     }
 }
 
 struct EditorWidgets {
     editor: LayoutEditor,
+    buffers: Option<Buffers>,
     variant_list: group::Scroll,
     variant_state_selection: group::Scroll,
     variant_state_pack: group::Pack,
@@ -347,12 +425,15 @@ impl EditorWidgets {
 
         let variant_actions = VariantActions::initialize(sender);
 
-        let end_behaviour_actions = EndBehaviourActions::initialize(sender);
+        let end_behaviour_actions = EndBehaviourActions::initialize(&layout, sender);
 
         let editor = LayoutEditor::new(layout);
 
+        let buffers = None;
+
         let mut ret = EditorWidgets {
             editor,
+            buffers,
             variant_list,
             variant_state_selection,
             variant_state_pack,
@@ -393,6 +474,10 @@ impl EditorWidgets {
                 ret.editor.selected_variant_state_idx,
             ),
         );
+
+        ret.update_end_zone_idx_choice(sender);
+
+        ret.end_behaviour_actions.zone_idx_choice.set_value(ret.editor.layout.get_variants()[ret.editor.selected_variant_idx].get_end_zone_idx() as i32);
 
         if ret.editor.layout.variants_len() == 1 {
             ret.variant_actions.delete_button.deactivate();
@@ -1036,6 +1121,20 @@ impl EditorWidgets {
         self.reset_zone_selection();
     }
 
+    fn update_end_zone_idx_choice(&mut self, sender: &app::Sender<Message>) {
+        let variant = &self.editor.layout.get_variants()[self.editor.selected_variant_idx];
+
+        let zones = &variant.get_zones()[variant.manual_zones_until() - 1];
+
+        self.end_behaviour_actions.zone_idx_choice.clear();
+        
+        for idx in 0..zones.len() {
+            self.end_behaviour_actions.zone_idx_choice.add_emit((idx + 1).to_string().as_str(), Shortcut::None, MenuFlag::Normal, sender.clone(), Message::EndZoneIdxChanged(idx));
+        }
+
+        self.end_behaviour_actions.zone_idx_choice.set_value(variant.get_end_zone_idx() as i32);
+    }
+
     fn add_new_variant(&mut self, variant: Variant, sender: &app::Sender<Message>) {
         let mut variants_pack =
             group::Pack::from_dyn_widget(&self.variant_list.child(0).unwrap()).unwrap();
@@ -1097,6 +1196,89 @@ impl EditorWidgets {
             .child(new_idx as i32)
             .unwrap()
             .set_label(format!("{new_idx} (default)").as_str());
+    }
+
+    fn preview_extend(&mut self, variant_idx: usize, update_count: bool, sender: &app::Sender<Message>) {
+        if let None = self.buffers {
+
+            let layout_buffer = self.editor.layout.clone();
+
+            let mut display_buffer = EditorWidgets::create_variant_state_display(&self.editor.layout, sender);
+
+            display_buffer.set_pos(self.variant_state_display.x(), self.variant_state_display.y());
+
+            display_buffer.hide();
+
+            let selection_buffer = EditorWidgets::create_variant_state_selection(&self.editor.layout, sender);
+
+            let state_buttons_buffer =
+                EditorWidgets::create_variant_state_buttons(sender).below_of(&selection_buffer, 4);
+
+            let state_pack_buffer_h = selection_buffer.h() + state_buttons_buffer.h();
+
+            let mut variant_state_pack_buffer =
+                group::Pack::default().with_size(selection_buffer.w(), state_pack_buffer_h);
+
+            variant_state_pack_buffer.end();
+
+            variant_state_pack_buffer.set_spacing(4);
+
+            variant_state_pack_buffer.resize_callback(move |p, _, _, _, h| {
+                if h != state_pack_buffer_h {
+                    p.widget_resize(p.x(), p.y(), p.w(), state_pack_buffer_h);
+                }
+            });
+
+            variant_state_pack_buffer.add(&selection_buffer);
+
+            variant_state_pack_buffer.add(&state_buttons_buffer);
+
+            variant_state_pack_buffer.set_pos(self.variant_state_pack.x(), self.variant_state_pack.y());
+
+            variant_state_pack_buffer.hide();
+            
+            self.buffers = Some(Buffers::new(layout_buffer, selection_buffer, variant_state_pack_buffer, display_buffer));
+
+            self.variant_state_pack.child(1).unwrap().deactivate();
+        }
+
+        if update_count {
+            self.end_behaviour_actions.preview_count += 1;
+        }
+
+        self.editor.layout.get_variants_mut()[variant_idx].extend();
+
+        self.new_variant_state(sender);
+    }
+
+    fn remove_extend_preview(&mut self) {
+        let Buffers{layout, variant_state_selection, variant_state_pack, variant_state_display } = match &self.buffers {
+            Some(buffers) => buffers.to_owned(),
+            None => return,
+        };
+
+        self.buffers = None;
+
+        self.editor.layout = layout;
+
+        WidgetBase::delete(self.variant_state_display.to_owned());
+
+        self.variant_state_display = variant_state_display;
+
+        self.variant_state_display.show();
+
+        WidgetBase::delete(self.variant_state_selection.to_owned());
+
+        self.variant_state_selection = variant_state_selection;
+
+        WidgetBase::delete(self.variant_state_pack.to_owned());
+
+        self.variant_state_pack = variant_state_pack;
+
+        self.variant_state_pack.show();
+
+        self.variant_list.redraw();
+
     }
 
     fn decrement_all_variant_state_buttons_after(
@@ -1192,651 +1374,11 @@ impl LayoutEditorGUI {
         }
     }
 
-    fn handle_events(&mut self) {
-        let editor_widgets = match &mut self.editor_widgets {
-            Some(val) => val,
-
-            None => return,
-        };
-
-        if let Some(msg) = self.receiver.recv() {
-            match msg {
-                Message::SelectedVariantChanged(idx) => {
-                    editor_widgets.reset_zone_selection();
-
-                    let old_variant_idx = editor_widgets.editor.selected_variant_idx;
-
-                    let old_variant_state_idx = editor_widgets.editor.selected_variant_state_idx;
-
-                    editor_widgets.editor.selected_variant_idx = idx;
-
-                    editor_widgets.editor.selected_variant_state_idx = 0;
-
-                    editor_widgets.update_highlighted_variant(old_variant_idx, idx);
-
-                    editor_widgets.update_shown_variant_state_selection(old_variant_idx, idx);
-
-                    editor_widgets.update_highlighted_variant_state_button(
-                        (old_variant_idx, old_variant_state_idx),
-                        (idx, 0),
-                    );
-
-                    editor_widgets.update_shown_variant_state(
-                        (old_variant_idx, old_variant_state_idx),
-                        (idx, 0),
-                    );
-
-                    if idx == editor_widgets.editor.layout.default_variant_idx() {
-                        editor_widgets
-                            .variant_actions
-                            .set_as_default_button
-                            .deactivate();
-                    } else if !editor_widgets
-                        .variant_actions
-                        .set_as_default_button
-                        .active()
-                    {
-                        editor_widgets
-                            .variant_actions
-                            .set_as_default_button
-                            .activate();
-                    }
-                }
-
-                Message::SelectedVariantStateChanged(idx) => {
-                    editor_widgets.reset_zone_selection();
-
-                    let variant_idx = editor_widgets.editor.selected_variant_idx;
-
-                    let old_idx = editor_widgets.editor.selected_variant_state_idx;
-
-                    editor_widgets.editor.selected_variant_state_idx = idx;
-
-                    editor_widgets.update_highlighted_variant_state_button(
-                        (variant_idx, old_idx),
-                        (variant_idx, idx),
-                    );
-
-                    editor_widgets
-                        .update_shown_variant_state((variant_idx, old_idx), (variant_idx, idx));
-                }
-
-                Message::SelectedZoneChanged(idx) => {
-                    let selected_variant_idx = editor_widgets.editor.selected_variant_idx;
-
-                    let selected_variant_state_idx =
-                        editor_widgets.editor.selected_variant_state_idx;
-
-                    if app::is_event_shift() {
-                        if editor_widgets.editor.selected_zone_idx1 == None
-                            || editor_widgets.editor.selected_zone_idx1 == Some(idx)
-                        {
-                            return;
-                        }
-
-                        if let Some(old_idx) = editor_widgets.editor.selected_zone_idx2 {
-                            editor_widgets.dehighlight_zone(
-                                selected_variant_idx,
-                                selected_variant_state_idx,
-                                old_idx,
-                            );
-
-                            if old_idx == idx {
-                                editor_widgets.editor.selected_zone_idx2 = None;
-
-                                editor_widgets.actions.split_button.set_label("Split");
-
-                                editor_widgets.actions.split_button.activate();
-
-                                editor_widgets.update_split_bounds();
-
-                                editor_widgets.actions.merge_button.deactivate();
-
-                                editor_widgets.actions.swap_button.deactivate();
-
-                                return;
-                            }
-                        }
-
-                        editor_widgets.editor.selected_zone_idx2 = Some(idx);
-
-                        editor_widgets.highlight_selected_zone(idx);
-
-                        editor_widgets.actions.swap_button.activate();
-
-                        let variant =
-                            &editor_widgets.editor.layout.get_variants()[selected_variant_idx];
-
-                        if variant.can_merge_zones(
-                            selected_variant_state_idx,
-                            editor_widgets.editor.selected_zone_idx1.unwrap(),
-                            idx,
-                        ) {
-                            editor_widgets
-                                .actions
-                                .split_button
-                                .set_label("Merge and split");
-
-                            editor_widgets.actions.split_button.activate();
-
-                            editor_widgets.update_split_bounds();
-
-                            editor_widgets.actions.merge_button.activate();
-                        } else {
-                            editor_widgets.disable_split();
-
-                            editor_widgets.actions.merge_button.deactivate();
-                        }
-                    } else {
-                        editor_widgets.actions.split_button.set_label("Split");
-
-                        editor_widgets.actions.merge_button.deactivate();
-
-                        editor_widgets.actions.swap_button.deactivate();
-
-                        let mut new_selection = true;
-
-                        if let Some(old_idx) = editor_widgets.editor.selected_zone_idx1 {
-                            editor_widgets.dehighlight_zone(
-                                selected_variant_idx,
-                                selected_variant_state_idx,
-                                old_idx,
-                            );
-
-                            if old_idx == idx {
-                                editor_widgets.editor.selected_zone_idx1 = None;
-
-                                new_selection = false;
-                            }
-                        }
-
-                        if let Some(old_idx) = editor_widgets.editor.selected_zone_idx2 {
-                            editor_widgets.editor.selected_zone_idx2 = None;
-
-                            if old_idx == idx {
-                                editor_widgets.editor.selected_zone_idx1 = Some(idx);
-
-                                editor_widgets.update_split_bounds();
-
-                                return;
-                            }
-
-                            editor_widgets.dehighlight_zone(
-                                selected_variant_idx,
-                                selected_variant_state_idx,
-                                old_idx,
-                            );
-                        }
-
-                        if new_selection {
-                            editor_widgets.editor.selected_zone_idx1 = Some(idx);
-
-                            editor_widgets.highlight_selected_zone(idx);
-
-                            editor_widgets.actions.split_button.activate();
-
-                            editor_widgets.update_split_bounds();
-                        } else {
-                            editor_widgets.disable_split();
-                        }
-                    }
-                }
-
-                Message::NewVariantState => {
-                    let w = editor_widgets.editor.layout.get_monitor_rect().w();
-
-                    let h = editor_widgets.editor.layout.get_monitor_rect().h();
-
-                    let variant = &mut editor_widgets.editor.layout.get_variants_mut()
-                        [editor_widgets.editor.selected_variant_idx];
-
-                    variant.new_zone_vec(w, h);
-
-                    editor_widgets.new_variant_state(&self.sender);
-                }
-
-                Message::CloneVariantState => {
-                    let variant = &mut editor_widgets.editor.layout.get_variants_mut()
-                        [editor_widgets.editor.selected_variant_idx];
-
-                    let idx = editor_widgets.editor.selected_variant_state_idx;
-
-                    variant.clone_zone_vec(idx);
-
-                    editor_widgets.new_variant_state(&self.sender);
-                }
-
-                Message::DeleteVariantState => {
-                    let variant = &mut editor_widgets.editor.layout.get_variants_mut()
-                        [editor_widgets.editor.selected_variant_idx];
-
-                    let idx = editor_widgets.editor.selected_variant_state_idx;
-
-                    variant.delete_zones(idx);
-
-                    editor_widgets.delete_variant_state(&self.sender);
-                }
-
-                Message::SwapVariantState(swap_direction) => {
-                    let variant = &mut editor_widgets.editor.layout.get_variants_mut()
-                        [editor_widgets.editor.selected_variant_idx];
-
-                    let selected_variant_state_idx =
-                        editor_widgets.editor.selected_variant_state_idx;
-
-                    let swap_with = match swap_direction {
-                        SwapDirection::Previous if selected_variant_state_idx != 0 => {
-                            selected_variant_state_idx - 1
-                        }
-                        SwapDirection::Next
-                            if editor_widgets.editor.selected_variant_state_idx
-                                != variant.manual_zones_until() - 1 =>
-                        {
-                            selected_variant_state_idx + 1
-                        }
-                        _ => return,
-                    };
-
-                    variant.swap_zone_vectors(selected_variant_state_idx, swap_with);
-
-                    editor_widgets.swap_variant_states(swap_with, &self.sender);
-                }
-
-                Message::SwapSplitDirection => {
-                    editor_widgets.actions.selected_direction =
-                        editor_widgets.actions.selected_direction.other();
-
-                    match editor_widgets.actions.selected_direction {
-                        Direction::Horizontal => {
-                            editor_widgets.actions.split_axis_text.set_label("x: ");
-                        }
-                        Direction::Vertical => {
-                            editor_widgets.actions.split_axis_text.set_label("y: ");
-                        }
-                    }
-
-                    if let Some(_) = editor_widgets.actions.split_bound_max {
-                        editor_widgets.update_split_bounds();
-                    }
-                }
-
-                Message::Split => {
-                    let split_at: i32 = match editor_widgets.actions.split_at_input.value().parse()
-                    {
-                        Ok(val)
-                            if val > 0 && val < editor_widgets.actions.split_bound_max.unwrap() =>
-                        {
-                            val
-                        }
-                        _ => {
-                            editor_widgets.reset_zone_selection();
-
-                            return;
-                        }
-                    };
-
-                    editor_widgets.actions.split_at_input.set_value("");
-
-                    let mut zone_idx = editor_widgets.editor.selected_zone_idx1.unwrap();
-
-                    let selected_variant_idx = editor_widgets.editor.selected_variant_idx;
-
-                    let selected_variant_state_idx =
-                        editor_widgets.editor.selected_variant_state_idx;
-
-                    let variant =
-                        &mut editor_widgets.editor.layout.get_variants_mut()[selected_variant_idx];
-
-                    let other_zone_idx = if let Some(idx) = editor_widgets.editor.selected_zone_idx2
-                    {
-                        variant.merge_zones(selected_variant_state_idx, zone_idx, idx);
-
-                        zone_idx = std::cmp::min(zone_idx, idx);
-
-                        Some(std::cmp::max(zone_idx, idx))
-                    } else {
-                        None
-                    };
-
-                    let zone = &variant.get_zones()[selected_variant_state_idx][zone_idx];
-
-                    let direction = match editor_widgets.actions.selected_direction {
-                        Direction::Horizontal => SplitDirection::Horizontal(zone.left + split_at),
-                        Direction::Vertical => SplitDirection::Vertical(zone.top + split_at),
-                    };
-
-                    variant.split(selected_variant_state_idx, zone_idx, direction);
-
-                    if let Some(idx) = other_zone_idx {
-                        let zone = variant.get_zones_mut()[selected_variant_state_idx]
-                            .pop()
-                            .unwrap();
-
-                        variant.get_zones_mut()[selected_variant_state_idx].insert(idx, zone);
-                    }
-
-                    editor_widgets.update_variant_state_display(
-                        selected_variant_idx,
-                        selected_variant_state_idx,
-                        &self.sender,
-                    );
-                }
-
-                Message::Swap => {
-                    let selected_variant_idx = editor_widgets.editor.selected_variant_idx;
-
-                    let selected_variant_state_idx =
-                        editor_widgets.editor.selected_variant_state_idx;
-
-                    let selected_zone_idx1 = editor_widgets.editor.selected_zone_idx1.unwrap();
-
-                    let selected_zone_idx2 = editor_widgets.editor.selected_zone_idx2.unwrap();
-
-                    let variant =
-                        &mut editor_widgets.editor.layout.get_variants_mut()[selected_variant_idx];
-
-                    variant.swap_zones(
-                        selected_variant_state_idx,
-                        selected_zone_idx1,
-                        selected_zone_idx2,
-                    );
-
-                    editor_widgets.update_variant_state_display(
-                        selected_variant_idx,
-                        selected_variant_state_idx,
-                        &self.sender,
-                    );
-                }
-
-                Message::Merge => {
-                    let selected_variant_idx = editor_widgets.editor.selected_variant_idx;
-
-                    let selected_variant_state_idx =
-                        editor_widgets.editor.selected_variant_state_idx;
-
-                    let selected_zone_idx1 = editor_widgets.editor.selected_zone_idx1.unwrap();
-
-                    let selected_zone_idx2 = editor_widgets.editor.selected_zone_idx2.unwrap();
-
-                    let variant =
-                        &mut editor_widgets.editor.layout.get_variants_mut()[selected_variant_idx];
-
-                    variant.merge_zones(
-                        selected_variant_state_idx,
-                        selected_zone_idx1,
-                        selected_zone_idx2,
-                    );
-
-                    editor_widgets.editor.selected_zone_idx1 = None;
-
-                    editor_widgets.editor.selected_zone_idx2 = None;
-
-                    editor_widgets.update_variant_state_display(
-                        selected_variant_idx,
-                        selected_variant_state_idx,
-                        &self.sender,
-                    );
-                }
-
-                Message::NewVariant => {
-                    let layout = &editor_widgets.editor.layout;
-
-                    let w = layout.get_monitor_rect().w();
-
-                    let h = layout.get_monitor_rect().h();
-
-                    let new_variant = Variant::new(w, h);
-
-                    editor_widgets.add_new_variant(new_variant, &self.sender);
-
-                    self.sender.send(Message::SelectedVariantChanged(
-                        editor_widgets.editor.layout.variants_len() - 1,
-                    ));
-
-                    if !editor_widgets.variant_actions.delete_button.active() {
-                        editor_widgets.variant_actions.delete_button.activate();
-                    }
-                }
-
-                Message::CloneVariant => {
-                    let layout = &mut editor_widgets.editor.layout;
-
-                    let new_variant =
-                        layout.get_variants()[editor_widgets.editor.selected_variant_idx].clone();
-
-                    editor_widgets.add_new_variant(new_variant, &self.sender);
-
-                    self.sender.send(Message::SelectedVariantChanged(
-                        editor_widgets.editor.layout.variants_len() - 1,
-                    ));
-
-                    if !editor_widgets.variant_actions.delete_button.active() {
-                        editor_widgets.variant_actions.delete_button.activate();
-                    }
-                }
-
-                Message::DeleteVariant => {
-                    let selected_variant_idx = editor_widgets.editor.selected_variant_idx;
-
-                    let old_default_variant_idx =
-                        editor_widgets.editor.layout.default_variant_idx();
-
-                    editor_widgets
-                        .editor
-                        .layout
-                        .delete_variant(selected_variant_idx);
-
-                    let variants_pack = group::Pack::from_dyn_widget(
-                        &editor_widgets.variant_list.child(0).unwrap(),
-                    )
-                    .unwrap();
-
-                    let variant_state_selection = &editor_widgets.variant_state_selection;
-
-                    let variant_state_display = &editor_widgets.variant_state_display;
-
-                    WidgetBase::delete(variants_pack.child(selected_variant_idx as i32).unwrap());
-
-                    WidgetBase::delete(
-                        variant_state_selection
-                            .child(selected_variant_idx as i32)
-                            .unwrap(),
-                    );
-
-                    WidgetBase::delete(
-                        variant_state_display
-                            .child(selected_variant_idx as i32)
-                            .unwrap(),
-                    );
-
-                    if selected_variant_idx == editor_widgets.editor.layout.variants_len() {
-                        editor_widgets.editor.selected_variant_idx = selected_variant_idx - 1;
-
-                        self.sender
-                            .send(Message::SelectedVariantChanged(selected_variant_idx - 1));
-                    } else {
-                        self.sender
-                            .send(Message::SelectedVariantChanged(selected_variant_idx));
-                    }
-
-                    for i in selected_variant_idx as i32..variants_pack.children() {
-                        let b =
-                            &mut button::Button::from_dyn_widget(&variants_pack.child(i).unwrap())
-                                .unwrap();
-
-                        b.set_label(i.to_string().as_str());
-
-                        b.emit(
-                            self.sender.clone(),
-                            Message::SelectedVariantChanged(i as usize),
-                        );
-                    }
-
-                    editor_widgets.update_default_variant_label(
-                        old_default_variant_idx,
-                        editor_widgets.editor.layout.default_variant_idx(),
-                    );
-
-                    if editor_widgets.editor.layout.variants_len() == 1 {
-                        editor_widgets.variant_actions.delete_button.deactivate();
-                    }
-                }
-
-                Message::SwapVariant(swap_direction) => {
-                    let selected_variant_idx = editor_widgets.editor.selected_variant_idx;
-
-                    let new_idx;
-
-                    let variants_pack = &mut group::Pack::from_dyn_widget(
-                        &editor_widgets.variant_list.child(0).unwrap(),
-                    )
-                    .unwrap();
-
-                    let variant_state_selection = &mut editor_widgets.variant_state_selection;
-
-                    let variant_state_display = &mut editor_widgets.variant_state_display;
-
-                    let first_idx;
-
-                    let second_idx;
-
-                    match swap_direction {
-                        SwapDirection::Previous => {
-                            if selected_variant_idx == 0 {
-                                return;
-                            } else {
-                                first_idx = selected_variant_idx - 1;
-
-                                second_idx = selected_variant_idx;
-
-                                new_idx = selected_variant_idx - 1;
-                            }
-                        }
-                        SwapDirection::Next => {
-                            if selected_variant_idx
-                                == editor_widgets.editor.layout.variants_len() - 1
-                            {
-                                return;
-                            } else {
-                                first_idx = selected_variant_idx;
-
-                                second_idx = selected_variant_idx + 1;
-
-                                new_idx = selected_variant_idx + 1;
-                            }
-                        }
-                    };
-
-                    editor_widgets
-                        .editor
-                        .layout
-                        .swap_variants(first_idx, second_idx);
-
-                    let first_variant_button = &mut button::Button::from_dyn_widget(
-                        &variants_pack.child(first_idx as i32).unwrap(),
-                    )
-                    .unwrap();
-
-                    let second_variant_button = &mut button::Button::from_dyn_widget(
-                        &variants_pack.child(second_idx as i32).unwrap(),
-                    )
-                    .unwrap();
-
-                    if second_idx == editor_widgets.editor.layout.default_variant_idx() {
-                        first_variant_button.set_label(format!("{second_idx} (default)").as_str());
-                    } else {
-                        first_variant_button.set_label(second_idx.to_string().as_str());
-                    }
-
-                    if first_idx == editor_widgets.editor.layout.default_variant_idx() {
-                        second_variant_button.set_label(format!("{first_idx} (default)").as_str());
-                    } else {
-                        second_variant_button.set_label(first_idx.to_string().as_str());
-                    }
-
-                    first_variant_button.emit(
-                        self.sender.clone(),
-                        Message::SelectedVariantChanged(second_idx),
-                    );
-
-                    second_variant_button.emit(
-                        self.sender.clone(),
-                        Message::SelectedVariantChanged(first_idx),
-                    );
-
-                    let first_state_selection_pack =
-                        variant_state_selection.child(first_idx as i32).unwrap();
-
-                    let second_state_selection_pack =
-                        variant_state_selection.child(second_idx as i32).unwrap();
-
-                    let first_variant_state_display_group =
-                        variant_state_display.child(first_idx as i32).unwrap();
-
-                    let second_variant_state_display_group =
-                        variant_state_display.child(second_idx as i32).unwrap();
-
-                    variants_pack.remove_by_index(second_idx as i32);
-
-                    variants_pack.remove_by_index(first_idx as i32);
-
-                    variant_state_selection.remove_by_index(second_idx as i32);
-
-                    variant_state_selection.remove_by_index(first_idx as i32);
-
-                    variant_state_display.remove_by_index(second_idx as i32);
-
-                    variant_state_display.remove_by_index(first_idx as i32);
-
-                    variants_pack.insert(second_variant_button, first_idx as i32);
-
-                    variants_pack.insert(first_variant_button, second_idx as i32);
-
-                    variant_state_selection.insert(&second_state_selection_pack, first_idx as i32);
-
-                    variant_state_selection.insert(&first_state_selection_pack, second_idx as i32);
-
-                    variant_state_display
-                        .insert(&second_variant_state_display_group, first_idx as i32);
-
-                    variant_state_display
-                        .insert(&first_variant_state_display_group, second_idx as i32);
-
-                    editor_widgets.editor.selected_variant_idx = new_idx;
-
-                    self.sender.send(Message::SelectedVariantChanged(new_idx));
-                }
-
-                Message::SetVariantAsDefault => {
-                    let selected_variant_idx = editor_widgets.editor.selected_variant_idx;
-
-                    let old_default_variant_idx =
-                        editor_widgets.editor.layout.default_variant_idx();
-
-                    editor_widgets
-                        .editor
-                        .layout
-                        .set_default_variant_idx(selected_variant_idx);
-
-                    editor_widgets.update_default_variant_label(
-                        old_default_variant_idx,
-                        selected_variant_idx,
-                    );
-
-                    editor_widgets
-                        .variant_actions
-                        .set_as_default_button
-                        .deactivate();
-                }
-            }
-        }
-    }
-
     pub fn run(mut self) {
         self.window.show();
 
         while self.app.wait() {
-            self.handle_events();
+            handle_events(&mut self);
         }
     }
 }
