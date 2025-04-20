@@ -91,8 +91,6 @@ fn create_horizontal_stack_starting_at_3() {
 
     let mut current_variant = &mut layout_group.get_variants_mut()[idx];
 
-    current_variant.set_end_tiling_start_from(3);
-
     current_variant.set_end_tiling_direction(Direction::Horizontal);
 
     current_variant.new_zone_vec(1920, 1200);

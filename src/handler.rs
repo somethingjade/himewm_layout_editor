@@ -16,7 +16,13 @@ pub fn handle_events(layout_editor: &mut LayoutEditorGUI) {
                 editor_widgets.reset_zone_selection();
 
                 if let Some(_) = &editor_widgets.buffers {
+                    editor_widgets.end_behaviour_actions.cancel_preview_button.deactivate();
+
+                    editor_widgets.actions.widgets.activate();
+
                     editor_widgets.remove_extend_preview();
+
+                    editor_widgets.end_behaviour_actions.preview_count = 0;
                 }
 
                 let old_variant_idx = editor_widgets.editor.selected_variant_idx;
@@ -209,6 +215,10 @@ pub fn handle_events(layout_editor: &mut LayoutEditorGUI) {
 
                 variant.new_zone_vec(w, h);
 
+                variant.set_end_zone_idx(0);
+                
+                editor_widgets.update_end_zone_idx_choice(&layout_editor.sender);
+
                 editor_widgets.new_variant_state(&layout_editor.sender);
             }
 
@@ -231,7 +241,7 @@ pub fn handle_events(layout_editor: &mut LayoutEditorGUI) {
 
                 variant.delete_zones(idx);
 
-                editor_widgets.delete_variant_state(&layout_editor.sender);
+                editor_widgets.delete_variant_state(&layout_editor.sender, None);
             }
 
             Message::SwapVariantState(swap_direction) => {
@@ -331,6 +341,8 @@ pub fn handle_events(layout_editor: &mut LayoutEditorGUI) {
 
                     variant.get_zones_mut()[selected_variant_state_idx].insert(idx, zone);
                 }
+
+                editor_widgets.update_end_zone_idx_choice(&layout_editor.sender);
 
                 editor_widgets.update_variant_state_display(
                     selected_variant_idx,
@@ -646,7 +658,23 @@ pub fn handle_events(layout_editor: &mut LayoutEditorGUI) {
                     .deactivate();
             }
 
+            Message::CancelPreview => {
+                editor_widgets.remove_extend_preview();
+
+                editor_widgets.end_behaviour_actions.preview_count = 0;
+
+                editor_widgets.end_behaviour_actions.cancel_preview_button.deactivate();
+
+                editor_widgets.actions.widgets.activate();
+
+                layout_editor.sender.send(Message::SelectedVariantChanged(editor_widgets.editor.selected_variant_idx));
+            }
+
             Message::PreviewExtend => {
+                editor_widgets.end_behaviour_actions.cancel_preview_button.activate();
+
+                editor_widgets.actions.widgets.deactivate();
+
                 layout_editor.window.begin();
                 
                 editor_widgets.preview_extend(editor_widgets.editor.selected_variant_idx, true, &layout_editor.sender);

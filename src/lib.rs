@@ -1,12 +1,12 @@
-use controller::handle_events;
+mod handler;
+
+use handler::handle_events;
 use enums::{Align, Color, FrameType};
 use fltk::{enums::Shortcut, group::FlexType, menu::MenuFlag, prelude::{InputExt, MenuExt}, *};
 use fltk_theme::*;
 use group::{PackType, ScrollType};
 use himewm_layout::*;
 use prelude::{GroupExt, WidgetBase, WidgetExt};
-
-mod controller;
 
 #[derive(Clone)]
 enum SwapDirection {
@@ -33,6 +33,7 @@ enum Message {
     SwapVariant(SwapDirection),
     SetVariantAsDefault,
     PreviewExtend,
+    CancelPreview,
     EndZoneIdxChanged(usize),
     SwapEndTilingDirection,
 }
@@ -290,6 +291,7 @@ struct EndBehaviourActions {
     preview_count: u32,
     widgets: group::Flex,
     zone_idx_choice: menu::Choice,
+    cancel_preview_button: button::Button,
     directional_actions: DirectionalActions,
     repeating_split_actions: RepeatingSplitActions,
 }
@@ -335,6 +337,14 @@ impl EndBehaviourActions {
 
         behaviour_column.fixed(&preview_button, 32);
 
+        let mut cancel_preview_button = button::Button::default().with_label("Stop previewing");
+
+        cancel_preview_button.emit(sender.clone(), Message::CancelPreview);
+
+        behaviour_column.fixed(&cancel_preview_button, 32);
+
+        cancel_preview_button.deactivate();
+
         behaviour_column.end();
 
         let column_spacer = frame::Frame::default();
@@ -353,6 +363,7 @@ impl EndBehaviourActions {
             preview_count: 0,
             widgets,
             zone_idx_choice,
+            cancel_preview_button,
             directional_actions,
             repeating_split_actions,
         };
@@ -910,10 +921,13 @@ impl EditorWidgets {
         ));
     }
 
-    fn delete_variant_state(&mut self, sender: &app::Sender<Message>) {
+    fn delete_variant_state(&mut self, sender: &app::Sender<Message>, custom_idx: Option<usize>) {
         let variant_idx = self.editor.selected_variant_idx;
 
-        let variant_state_idx = self.editor.selected_variant_state_idx;
+        let variant_state_idx = match custom_idx {
+            Some(idx) => idx,
+            None => self.editor.selected_variant_state_idx
+        };
 
         let variant_state_pack = &mut group::Pack::from_dyn_widget(
             &self
@@ -941,16 +955,18 @@ impl EditorWidgets {
 
         self.decrement_all_variant_state_buttons_after(variant_idx, variant_state_idx, sender);
 
-        if variant_state_idx
-            == self.editor.layout.get_variants()[self.editor.selected_variant_idx]
-                .manual_zones_until()
-        {
-            self.editor.selected_variant_state_idx -= 1;
-        }
+        if let None = custom_idx {
+            if variant_state_idx
+                == self.editor.layout.get_variants()[self.editor.selected_variant_idx]
+                    .manual_zones_until()
+            {
+                self.editor.selected_variant_state_idx -= 1;
+            }
 
-        sender.send(Message::SelectedVariantStateChanged(
-            self.editor.selected_variant_state_idx,
-        ));
+            sender.send(Message::SelectedVariantStateChanged(
+                self.editor.selected_variant_state_idx,
+            ));
+        }
     }
 
     fn swap_variant_states(&mut self, swap_with: usize, sender: &app::Sender<Message>) {
@@ -1200,7 +1216,6 @@ impl EditorWidgets {
 
     fn preview_extend(&mut self, variant_idx: usize, update_count: bool, sender: &app::Sender<Message>) {
         if let None = self.buffers {
-
             let layout_buffer = self.editor.layout.clone();
 
             let mut display_buffer = EditorWidgets::create_variant_state_display(&self.editor.layout, sender);
@@ -1240,6 +1255,12 @@ impl EditorWidgets {
             self.buffers = Some(Buffers::new(layout_buffer, selection_buffer, variant_state_pack_buffer, display_buffer));
 
             self.variant_state_pack.child(1).unwrap().deactivate();
+
+            self.editor.layout.get_variants_mut()[variant_idx].update_from_zones();
+
+            if self.editor.layout.get_variants()[variant_idx].using_from_zones() {
+                self.delete_variant_state(sender, Some(self.editor.layout.get_variants()[variant_idx].manual_zones_until()));
+            }
         }
 
         if update_count {
@@ -1278,7 +1299,6 @@ impl EditorWidgets {
         self.variant_state_pack.show();
 
         self.variant_list.redraw();
-
     }
 
     fn decrement_all_variant_state_buttons_after(
