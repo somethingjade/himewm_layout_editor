@@ -16,7 +16,10 @@ pub fn handle_events(layout_editor: &mut LayoutEditorGUI) {
                 editor_widgets.reset_zone_selection();
 
                 if let Some(_) = &editor_widgets.buffers {
-                    editor_widgets.end_behaviour_actions.cancel_preview_button.deactivate();
+                    editor_widgets
+                        .end_behaviour_actions
+                        .cancel_preview_button
+                        .deactivate();
 
                     editor_widgets.actions.widgets.activate();
 
@@ -42,10 +45,8 @@ pub fn handle_events(layout_editor: &mut LayoutEditorGUI) {
                     (idx, 0),
                 );
 
-                editor_widgets.update_shown_variant_state(
-                    (old_variant_idx, old_variant_state_idx),
-                    (idx, 0),
-                );
+                editor_widgets
+                    .update_shown_variant_state((old_variant_idx, old_variant_state_idx), (idx, 0));
 
                 if idx == editor_widgets.editor.layout.default_variant_idx() {
                     editor_widgets
@@ -87,8 +88,7 @@ pub fn handle_events(layout_editor: &mut LayoutEditorGUI) {
             Message::SelectedZoneChanged(idx) => {
                 let selected_variant_idx = editor_widgets.editor.selected_variant_idx;
 
-                let selected_variant_state_idx =
-                    editor_widgets.editor.selected_variant_state_idx;
+                let selected_variant_state_idx = editor_widgets.editor.selected_variant_state_idx;
 
                 if app::is_event_shift() {
                     if editor_widgets.editor.selected_zone_idx1 == None
@@ -216,7 +216,7 @@ pub fn handle_events(layout_editor: &mut LayoutEditorGUI) {
                 variant.new_zone_vec(w, h);
 
                 variant.set_end_zone_idx(0);
-                
+
                 editor_widgets.update_end_zone_idx_choice(&layout_editor.sender);
 
                 editor_widgets.new_variant_state(&layout_editor.sender);
@@ -248,8 +248,7 @@ pub fn handle_events(layout_editor: &mut LayoutEditorGUI) {
                 let variant = &mut editor_widgets.editor.layout.get_variants_mut()
                     [editor_widgets.editor.selected_variant_idx];
 
-                let selected_variant_state_idx =
-                    editor_widgets.editor.selected_variant_state_idx;
+                let selected_variant_state_idx = editor_widgets.editor.selected_variant_state_idx;
 
                 let swap_with = match swap_direction {
                     SwapDirection::Previous if selected_variant_state_idx != 0 => {
@@ -288,11 +287,8 @@ pub fn handle_events(layout_editor: &mut LayoutEditorGUI) {
             }
 
             Message::Split => {
-                let split_at: i32 = match editor_widgets.actions.split_at_input.value().parse()
-                {
-                    Ok(val)
-                        if val > 0 && val < editor_widgets.actions.split_bound_max.unwrap() =>
-                    {
+                let split_at: i32 = match editor_widgets.actions.split_at_input.value().parse() {
+                    Ok(val) if val > 0 && val < editor_widgets.actions.split_bound_max.unwrap() => {
                         val
                     }
                     _ => {
@@ -308,14 +304,12 @@ pub fn handle_events(layout_editor: &mut LayoutEditorGUI) {
 
                 let selected_variant_idx = editor_widgets.editor.selected_variant_idx;
 
-                let selected_variant_state_idx =
-                    editor_widgets.editor.selected_variant_state_idx;
+                let selected_variant_state_idx = editor_widgets.editor.selected_variant_state_idx;
 
                 let variant =
                     &mut editor_widgets.editor.layout.get_variants_mut()[selected_variant_idx];
 
-                let other_zone_idx = if let Some(idx) = editor_widgets.editor.selected_zone_idx2
-                {
+                let other_zone_idx = if let Some(idx) = editor_widgets.editor.selected_zone_idx2 {
                     variant.merge_zones(selected_variant_state_idx, zone_idx, idx);
 
                     zone_idx = std::cmp::min(zone_idx, idx);
@@ -354,8 +348,7 @@ pub fn handle_events(layout_editor: &mut LayoutEditorGUI) {
             Message::Swap => {
                 let selected_variant_idx = editor_widgets.editor.selected_variant_idx;
 
-                let selected_variant_state_idx =
-                    editor_widgets.editor.selected_variant_state_idx;
+                let selected_variant_state_idx = editor_widgets.editor.selected_variant_state_idx;
 
                 let selected_zone_idx1 = editor_widgets.editor.selected_zone_idx1.unwrap();
 
@@ -380,8 +373,7 @@ pub fn handle_events(layout_editor: &mut LayoutEditorGUI) {
             Message::Merge => {
                 let selected_variant_idx = editor_widgets.editor.selected_variant_idx;
 
-                let selected_variant_state_idx =
-                    editor_widgets.editor.selected_variant_state_idx;
+                let selected_variant_state_idx = editor_widgets.editor.selected_variant_state_idx;
 
                 let selected_zone_idx1 = editor_widgets.editor.selected_zone_idx1.unwrap();
 
@@ -447,18 +439,16 @@ pub fn handle_events(layout_editor: &mut LayoutEditorGUI) {
             Message::DeleteVariant => {
                 let selected_variant_idx = editor_widgets.editor.selected_variant_idx;
 
-                let old_default_variant_idx =
-                    editor_widgets.editor.layout.default_variant_idx();
+                let old_default_variant_idx = editor_widgets.editor.layout.default_variant_idx();
 
                 editor_widgets
                     .editor
                     .layout
                     .delete_variant(selected_variant_idx);
 
-                let variants_pack = group::Pack::from_dyn_widget(
-                    &editor_widgets.variant_list.child(0).unwrap(),
-                )
-                .unwrap();
+                let variants_pack =
+                    group::Pack::from_dyn_widget(&editor_widgets.variant_list.child(0).unwrap())
+                        .unwrap();
 
                 let variant_state_selection = &editor_widgets.variant_state_selection;
 
@@ -481,17 +471,18 @@ pub fn handle_events(layout_editor: &mut LayoutEditorGUI) {
                 if selected_variant_idx == editor_widgets.editor.layout.variants_len() {
                     editor_widgets.editor.selected_variant_idx = selected_variant_idx - 1;
 
-                    layout_editor.sender
+                    layout_editor
+                        .sender
                         .send(Message::SelectedVariantChanged(selected_variant_idx - 1));
                 } else {
-                    layout_editor.sender
+                    layout_editor
+                        .sender
                         .send(Message::SelectedVariantChanged(selected_variant_idx));
                 }
 
                 for i in selected_variant_idx as i32..variants_pack.children() {
-                    let b =
-                        &mut button::Button::from_dyn_widget(&variants_pack.child(i).unwrap())
-                            .unwrap();
+                    let b = &mut button::Button::from_dyn_widget(&variants_pack.child(i).unwrap())
+                        .unwrap();
 
                     b.set_label(i.to_string().as_str());
 
@@ -542,9 +533,7 @@ pub fn handle_events(layout_editor: &mut LayoutEditorGUI) {
                         }
                     }
                     SwapDirection::Next => {
-                        if selected_variant_idx
-                            == editor_widgets.editor.layout.variants_len() - 1
-                        {
+                        if selected_variant_idx == editor_widgets.editor.layout.variants_len() - 1 {
                             return;
                         } else {
                             first_idx = selected_variant_idx;
@@ -625,32 +614,29 @@ pub fn handle_events(layout_editor: &mut LayoutEditorGUI) {
 
                 variant_state_selection.insert(&first_state_selection_pack, second_idx as i32);
 
-                variant_state_display
-                    .insert(&second_variant_state_display_group, first_idx as i32);
+                variant_state_display.insert(&second_variant_state_display_group, first_idx as i32);
 
-                variant_state_display
-                    .insert(&first_variant_state_display_group, second_idx as i32);
+                variant_state_display.insert(&first_variant_state_display_group, second_idx as i32);
 
                 editor_widgets.editor.selected_variant_idx = new_idx;
 
-                layout_editor.sender.send(Message::SelectedVariantChanged(new_idx));
+                layout_editor
+                    .sender
+                    .send(Message::SelectedVariantChanged(new_idx));
             }
 
             Message::SetVariantAsDefault => {
                 let selected_variant_idx = editor_widgets.editor.selected_variant_idx;
 
-                let old_default_variant_idx =
-                    editor_widgets.editor.layout.default_variant_idx();
+                let old_default_variant_idx = editor_widgets.editor.layout.default_variant_idx();
 
                 editor_widgets
                     .editor
                     .layout
                     .set_default_variant_idx(selected_variant_idx);
 
-                editor_widgets.update_default_variant_label(
-                    old_default_variant_idx,
-                    selected_variant_idx,
-                );
+                editor_widgets
+                    .update_default_variant_label(old_default_variant_idx, selected_variant_idx);
 
                 editor_widgets
                     .variant_actions
@@ -663,21 +649,33 @@ pub fn handle_events(layout_editor: &mut LayoutEditorGUI) {
 
                 editor_widgets.end_behaviour_actions.preview_count = 0;
 
-                editor_widgets.end_behaviour_actions.cancel_preview_button.deactivate();
+                editor_widgets
+                    .end_behaviour_actions
+                    .cancel_preview_button
+                    .deactivate();
 
                 editor_widgets.actions.widgets.activate();
 
-                layout_editor.sender.send(Message::SelectedVariantChanged(editor_widgets.editor.selected_variant_idx));
+                layout_editor.sender.send(Message::SelectedVariantChanged(
+                    editor_widgets.editor.selected_variant_idx,
+                ));
             }
 
             Message::PreviewExtend => {
-                editor_widgets.end_behaviour_actions.cancel_preview_button.activate();
+                editor_widgets
+                    .end_behaviour_actions
+                    .cancel_preview_button
+                    .activate();
 
                 editor_widgets.actions.widgets.deactivate();
 
                 layout_editor.window.begin();
-                
-                editor_widgets.preview_extend(editor_widgets.editor.selected_variant_idx, true, &layout_editor.sender);
+
+                editor_widgets.preview_extend(
+                    editor_widgets.editor.selected_variant_idx,
+                    true,
+                    &layout_editor.sender,
+                );
 
                 layout_editor.window.end();
             }
@@ -686,37 +684,126 @@ pub fn handle_events(layout_editor: &mut LayoutEditorGUI) {
                 if let Some(_) = &editor_widgets.buffers {
                     editor_widgets.remove_extend_preview();
 
-                    editor_widgets.editor.layout.get_variants_mut()[editor_widgets.editor.selected_variant_idx].set_end_zone_idx(idx);
+                    editor_widgets.editor.layout.get_variants_mut()
+                        [editor_widgets.editor.selected_variant_idx]
+                        .set_end_zone_idx(idx);
 
                     layout_editor.window.begin();
 
                     for _i in 0..editor_widgets.end_behaviour_actions.preview_count {
-                        editor_widgets.preview_extend(editor_widgets.editor.selected_variant_idx, false, &layout_editor.sender);
+                        editor_widgets.preview_extend(
+                            editor_widgets.editor.selected_variant_idx,
+                            false,
+                            &layout_editor.sender,
+                        );
                     }
 
                     layout_editor.window.end();
                 } else {
-                    editor_widgets.editor.layout.get_variants_mut()[editor_widgets.editor.selected_variant_idx].set_end_zone_idx(idx);
+                    editor_widgets.editor.layout.get_variants_mut()
+                        [editor_widgets.editor.selected_variant_idx]
+                        .set_end_zone_idx(idx);
+                }
+            }
+
+            Message::SwapEndTilingBehaviour => {
+                let variant = &mut editor_widgets.editor.layout.get_variants_mut()
+                    [editor_widgets.editor.selected_variant_idx];
+
+                match variant.get_end_tiling_behaviour().to_owned() {
+                    EndTilingBehaviour::Directional {
+                        direction,
+                        from_zones,
+                        zone_idx,
+                    } => {
+                        editor_widgets
+                            .end_behaviour_actions
+                            .directional
+                            .widgets
+                            .hide();
+
+                        editor_widgets
+                            .end_behaviour_actions
+                            .repeating
+                            .widgets
+                            .show();
+
+                        editor_widgets
+                            .end_behaviour_actions
+                            .directional
+                            .end_tiling_behaviour = EndTilingBehaviour::Directional {
+                            direction,
+                            from_zones,
+                            zone_idx,
+                        };
+
+                        variant.set_end_tiling_behaviour(
+                            editor_widgets
+                                .end_behaviour_actions
+                                .repeating
+                                .end_tiling_behaviour
+                                .to_owned(),
+                        );
+                    }
+                    EndTilingBehaviour::Repeating { splits, zone_idx } => {
+                        editor_widgets
+                            .end_behaviour_actions
+                            .repeating
+                            .widgets
+                            .hide();
+
+                        editor_widgets
+                            .end_behaviour_actions
+                            .directional
+                            .widgets
+                            .show();
+
+                        editor_widgets
+                            .end_behaviour_actions
+                            .repeating
+                            .end_tiling_behaviour =
+                            EndTilingBehaviour::Repeating { splits, zone_idx };
+
+                        variant.set_end_tiling_behaviour(
+                            editor_widgets
+                                .end_behaviour_actions
+                                .directional
+                                .end_tiling_behaviour
+                                .to_owned(),
+                        );
+                    }
                 }
             }
 
             Message::SwapEndTilingDirection => {
-                let new_direction = editor_widgets.editor.layout.get_variants_mut()[editor_widgets.editor.selected_variant_idx].get_end_tiling_direction().unwrap().other();
+                let new_direction = editor_widgets.editor.layout.get_variants_mut()
+                    [editor_widgets.editor.selected_variant_idx]
+                    .get_end_tiling_direction()
+                    .unwrap()
+                    .other();
 
                 if let Some(_) = &editor_widgets.buffers {
                     editor_widgets.remove_extend_preview();
 
-                    editor_widgets.editor.layout.get_variants_mut()[editor_widgets.editor.selected_variant_idx].set_end_tiling_direction(new_direction);
+                    editor_widgets.editor.layout.get_variants_mut()
+                        [editor_widgets.editor.selected_variant_idx]
+                        .set_end_tiling_direction(new_direction);
 
                     layout_editor.window.begin();
 
                     for _i in 0..editor_widgets.end_behaviour_actions.preview_count {
-                        editor_widgets.preview_extend(editor_widgets.editor.selected_variant_idx, false, &layout_editor.sender);
+                        editor_widgets.preview_extend(
+                            editor_widgets.editor.selected_variant_idx,
+                            false,
+                            &layout_editor.sender,
+                        );
                     }
 
                     layout_editor.window.end();
                 } else {
-                    editor_widgets.editor.layout.get_variants_mut()[editor_widgets.editor.selected_variant_idx].set_end_tiling_direction(new_direction);
+                    editor_widgets.editor.layout.get_variants_mut()
+                        [editor_widgets.editor.selected_variant_idx]
+                        .set_end_tiling_direction(new_direction);
                 }
             }
         }

@@ -1,10 +1,16 @@
 mod handler;
 
-use handler::handle_events;
 use enums::{Align, Color, FrameType};
-use fltk::{enums::Shortcut, group::FlexType, menu::MenuFlag, prelude::{InputExt, MenuExt}, *};
+use fltk::{
+    enums::Shortcut,
+    group::FlexType,
+    menu::MenuFlag,
+    prelude::{InputExt, MenuExt},
+    *,
+};
 use fltk_theme::*;
 use group::{PackType, ScrollType};
+use handler::handle_events;
 use himewm_layout::*;
 use prelude::{GroupExt, WidgetBase, WidgetExt};
 
@@ -35,6 +41,7 @@ enum Message {
     PreviewExtend,
     CancelPreview,
     EndZoneIdxChanged(usize),
+    SwapEndTilingBehaviour,
     SwapEndTilingDirection,
 }
 
@@ -234,17 +241,38 @@ impl VariantActions {
     }
 }
 
-struct DirectionalActions {
+struct Directional {
     widgets: group::Flex,
+    end_tiling_behaviour: EndTilingBehaviour,
 }
 
-impl DirectionalActions {
+impl Directional {
     fn initialize(layout: &Layout, sender: &app::Sender<Message>) -> Self {
+        let end_tiling_behaviour = match layout.get_variants()[layout.default_variant_idx()]
+            .get_end_tiling_behaviour()
+            .to_owned()
+        {
+            EndTilingBehaviour::Directional {
+                direction,
+                from_zones,
+                zone_idx,
+            } => EndTilingBehaviour::Directional {
+                direction,
+                from_zones,
+                zone_idx,
+            },
+            EndTilingBehaviour::Repeating {
+                splits: _,
+                zone_idx,
+            } => EndTilingBehaviour::default_directional(),
+        };
+
         let widgets = group::Flex::default_fill().column();
 
         let _direction_label = frame::Frame::default().with_label("Direction");
 
-        let mut horizontal_radio_button = button::RadioRoundButton::default().with_label("Horizontal");
+        let mut horizontal_radio_button =
+            button::RadioRoundButton::default().with_label("Horizontal");
 
         horizontal_radio_button.emit(sender.clone(), Message::SwapEndTilingDirection);
 
@@ -252,20 +280,19 @@ impl DirectionalActions {
 
         vertical_radio_button.emit(sender.clone(), Message::SwapEndTilingDirection);
 
-        match layout.get_variants()[layout.default_variant_idx()].get_end_tiling_direction() {
-            Some(direction) => {
-                match direction {
-                    Direction::Horizontal => {
-                        horizontal_radio_button.toggle(true);
-                    }
-                    Direction::Vertical => {
-                        vertical_radio_button.toggle(true);
-                    }
+        if let EndTilingBehaviour::Directional {
+            direction,
+            from_zones: _,
+            zone_idx: _,
+        } = &end_tiling_behaviour
+        {
+            match direction {
+                Direction::Horizontal => {
+                    horizontal_radio_button.toggle(true);
                 }
-            }
-
-            None => {
-                vertical_radio_button.toggle(true);
+                Direction::Vertical => {
+                    vertical_radio_button.toggle(true);
+                }
             }
         }
 
@@ -273,17 +300,24 @@ impl DirectionalActions {
 
         widgets.end();
 
-        return DirectionalActions {
+        return Directional {
             widgets,
+            end_tiling_behaviour,
         };
     }
 }
 
-struct RepeatingSplitActions {}
+struct Repeating {
+    widgets: group::Flex,
+    end_tiling_behaviour: EndTilingBehaviour,
+}
 
-impl RepeatingSplitActions {
+impl Repeating {
     fn initialize() -> Self {
-        return RepeatingSplitActions {};
+        return Repeating {
+            widgets: group::Flex::default(),
+            end_tiling_behaviour: EndTilingBehaviour::default_repeating(),
+        };
     }
 }
 
@@ -292,8 +326,8 @@ struct EndBehaviourActions {
     widgets: group::Flex,
     zone_idx_choice: menu::Choice,
     cancel_preview_button: button::Button,
-    directional_actions: DirectionalActions,
-    repeating_split_actions: RepeatingSplitActions,
+    directional: Directional,
+    repeating: Repeating,
 }
 
 impl EndBehaviourActions {
@@ -313,7 +347,12 @@ impl EndBehaviourActions {
         let mut directional_radio_button =
             button::RadioRoundButton::default().with_label("Directional");
 
-        let _repeating_radio_button = button::RadioRoundButton::default().with_label("Repeating");
+        let mut repeating_radio_button =
+            button::RadioRoundButton::default().with_label("Repeating");
+
+        directional_radio_button.emit(sender.clone(), Message::SwapEndTilingBehaviour);
+
+        repeating_radio_button.emit(sender.clone(), Message::SwapEndTilingBehaviour);
 
         directional_radio_button.toggle(true);
 
@@ -353,22 +392,21 @@ impl EndBehaviourActions {
 
         widgets.end();
 
-        let directional_actions = DirectionalActions::initialize(layout, sender);
+        let directional = Directional::initialize(layout, sender);
 
-        widgets.add(&directional_actions.widgets);
+        widgets.add(&directional.widgets);
 
-        let repeating_split_actions = RepeatingSplitActions::initialize();
+        let repeating = Repeating::initialize();
 
         return EndBehaviourActions {
             preview_count: 0,
             widgets,
             zone_idx_choice,
             cancel_preview_button,
-            directional_actions,
-            repeating_split_actions,
+            directional,
+            repeating,
         };
     }
-    
 }
 
 #[derive(Clone)]
@@ -376,11 +414,16 @@ struct Buffers {
     layout: Layout,
     variant_state_selection: group::Scroll,
     variant_state_pack: group::Pack,
-    variant_state_display: group::Group
+    variant_state_display: group::Group,
 }
 
 impl Buffers {
-    fn new(layout: Layout, variant_state_selection: group::Scroll, variant_state_pack: group::Pack, variant_state_display: group::Group) -> Self {
+    fn new(
+        layout: Layout,
+        variant_state_selection: group::Scroll,
+        variant_state_pack: group::Pack,
+        variant_state_display: group::Group,
+    ) -> Self {
         Buffers {
             layout,
             variant_state_selection,
@@ -488,7 +531,10 @@ impl EditorWidgets {
 
         ret.update_end_zone_idx_choice(sender);
 
-        ret.end_behaviour_actions.zone_idx_choice.set_value(ret.editor.layout.get_variants()[ret.editor.selected_variant_idx].get_end_zone_idx() as i32);
+        ret.end_behaviour_actions.zone_idx_choice.set_value(
+            ret.editor.layout.get_variants()[ret.editor.selected_variant_idx].get_end_zone_idx()
+                as i32,
+        );
 
         if ret.editor.layout.variants_len() == 1 {
             ret.variant_actions.delete_button.deactivate();
@@ -926,7 +972,7 @@ impl EditorWidgets {
 
         let variant_state_idx = match custom_idx {
             Some(idx) => idx,
-            None => self.editor.selected_variant_state_idx
+            None => self.editor.selected_variant_state_idx,
         };
 
         let variant_state_pack = &mut group::Pack::from_dyn_widget(
@@ -1143,12 +1189,20 @@ impl EditorWidgets {
         let zones = &variant.get_zones()[variant.manual_zones_until() - 1];
 
         self.end_behaviour_actions.zone_idx_choice.clear();
-        
+
         for idx in 0..zones.len() {
-            self.end_behaviour_actions.zone_idx_choice.add_emit((idx + 1).to_string().as_str(), Shortcut::None, MenuFlag::Normal, sender.clone(), Message::EndZoneIdxChanged(idx));
+            self.end_behaviour_actions.zone_idx_choice.add_emit(
+                (idx + 1).to_string().as_str(),
+                Shortcut::None,
+                MenuFlag::Normal,
+                sender.clone(),
+                Message::EndZoneIdxChanged(idx),
+            );
         }
 
-        self.end_behaviour_actions.zone_idx_choice.set_value(variant.get_end_zone_idx() as i32);
+        self.end_behaviour_actions
+            .zone_idx_choice
+            .set_value(variant.get_end_zone_idx() as i32);
     }
 
     fn add_new_variant(&mut self, variant: Variant, sender: &app::Sender<Message>) {
@@ -1214,17 +1268,27 @@ impl EditorWidgets {
             .set_label(format!("{new_idx} (default)").as_str());
     }
 
-    fn preview_extend(&mut self, variant_idx: usize, update_count: bool, sender: &app::Sender<Message>) {
+    fn preview_extend(
+        &mut self,
+        variant_idx: usize,
+        update_count: bool,
+        sender: &app::Sender<Message>,
+    ) {
         if let None = self.buffers {
             let layout_buffer = self.editor.layout.clone();
 
-            let mut display_buffer = EditorWidgets::create_variant_state_display(&self.editor.layout, sender);
+            let mut display_buffer =
+                EditorWidgets::create_variant_state_display(&self.editor.layout, sender);
 
-            display_buffer.set_pos(self.variant_state_display.x(), self.variant_state_display.y());
+            display_buffer.set_pos(
+                self.variant_state_display.x(),
+                self.variant_state_display.y(),
+            );
 
             display_buffer.hide();
 
-            let selection_buffer = EditorWidgets::create_variant_state_selection(&self.editor.layout, sender);
+            let selection_buffer =
+                EditorWidgets::create_variant_state_selection(&self.editor.layout, sender);
 
             let state_buttons_buffer =
                 EditorWidgets::create_variant_state_buttons(sender).below_of(&selection_buffer, 4);
@@ -1248,18 +1312,27 @@ impl EditorWidgets {
 
             variant_state_pack_buffer.add(&state_buttons_buffer);
 
-            variant_state_pack_buffer.set_pos(self.variant_state_pack.x(), self.variant_state_pack.y());
+            variant_state_pack_buffer
+                .set_pos(self.variant_state_pack.x(), self.variant_state_pack.y());
 
             variant_state_pack_buffer.hide();
-            
-            self.buffers = Some(Buffers::new(layout_buffer, selection_buffer, variant_state_pack_buffer, display_buffer));
+
+            self.buffers = Some(Buffers::new(
+                layout_buffer,
+                selection_buffer,
+                variant_state_pack_buffer,
+                display_buffer,
+            ));
 
             self.variant_state_pack.child(1).unwrap().deactivate();
 
             self.editor.layout.get_variants_mut()[variant_idx].update_from_zones();
 
             if self.editor.layout.get_variants()[variant_idx].using_from_zones() {
-                self.delete_variant_state(sender, Some(self.editor.layout.get_variants()[variant_idx].manual_zones_until()));
+                self.delete_variant_state(
+                    sender,
+                    Some(self.editor.layout.get_variants()[variant_idx].manual_zones_until()),
+                );
             }
         }
 
@@ -1273,7 +1346,12 @@ impl EditorWidgets {
     }
 
     fn remove_extend_preview(&mut self) {
-        let Buffers{layout, variant_state_selection, variant_state_pack, variant_state_display } = match &self.buffers {
+        let Buffers {
+            layout,
+            variant_state_selection,
+            variant_state_pack,
+            variant_state_display,
+        } = match &self.buffers {
             Some(buffers) => buffers.to_owned(),
             None => return,
         };
